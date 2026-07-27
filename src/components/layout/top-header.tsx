@@ -6,7 +6,6 @@ import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +20,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { useTheme } from "@/components/theme-provider"
-import { cn } from "@/lib/utils"
 
 const PAGE_TITLES: Record<string, { title: string; description: string }> = {
   "/overview": { title: "Overview", description: "Your business at a glance" },
@@ -30,37 +28,6 @@ const PAGE_TITLES: Record<string, { title: string; description: string }> = {
   "/orders": { title: "Orders", description: "Review and fulfill customer orders" },
   "/settings": { title: "Settings", description: "Configure your workspace" },
 }
-
-const notifications = [
-  {
-    id: 1,
-    title: "New order received",
-    description: "Order #4521 from Acme Corp — $1,240.00",
-    time: "2 min ago",
-    unread: true,
-  },
-  {
-    id: 2,
-    title: "Low stock alert",
-    description: "SKU-2291 has fallen below threshold",
-    time: "14 min ago",
-    unread: true,
-  },
-  {
-    id: 3,
-    title: "Shipment delivered",
-    description: "Order #4498 was delivered successfully",
-    time: "1 hr ago",
-    unread: false,
-  },
-  {
-    id: 4,
-    title: "Payment confirmed",
-    description: "Invoice #1092 — $5,800.00 cleared",
-    time: "3 hr ago",
-    unread: false,
-  },
-]
 
 export function TopHeader() {
   const location = useLocation()
@@ -71,7 +38,6 @@ export function TopHeader() {
   const userInitial = userEmail.charAt(0).toUpperCase() || "U"
   const userName = user?.user_metadata?.full_name ?? userEmail.split("@")[0] ?? "User"
   const pageInfo = PAGE_TITLES[location.pathname] ?? { title: "Dashboard", description: "" }
-  const unreadCount = notifications.filter((n) => n.unread).length
 
   return (
     <header className="sticky top-0 z-50 flex h-16 shrink-0 items-center gap-2 border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -107,47 +73,21 @@ export function TopHeader() {
               aria-label="Notifications"
             >
               <Bell className="size-4" />
-              {unreadCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
-                  {unreadCount}
-                </span>
-              )}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-80 p-0">
             <div className="flex items-center justify-between border-b px-4 py-3">
               <span className="text-sm font-semibold">Notifications</span>
-              <Badge variant="secondary" className="text-xs">
-                {unreadCount} new
-              </Badge>
+              <span className="text-xs text-muted-foreground">0 new</span>
             </div>
-            <div className="divide-y">
-              {notifications.map((n) => (
-                <div
-                  key={n.id}
-                  className={cn(
-                    "flex gap-3 px-4 py-3 text-sm transition-colors hover:bg-muted/50 cursor-pointer",
-                    n.unread && "bg-primary/5"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "mt-1 size-2 shrink-0 rounded-full",
-                      n.unread ? "bg-primary" : "bg-muted-foreground/30"
-                    )}
-                  />
-                  <div className="flex-1 space-y-0.5">
-                    <p className="font-medium leading-snug">{n.title}</p>
-                    <p className="text-xs text-muted-foreground">{n.description}</p>
-                  </div>
-                  <span className="shrink-0 text-xs text-muted-foreground">{n.time}</span>
-                </div>
-              ))}
-            </div>
-            <div className="border-t px-4 py-2.5">
-              <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground">
-                View all notifications
-              </Button>
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                <Bell className="size-4 text-muted-foreground" />
+              </div>
+              <p className="mt-3 text-sm font-medium">No notifications yet</p>
+              <p className="mt-1 max-w-[220px] text-xs text-muted-foreground">
+                Once your Noon API sync is active, system events will appear here.
+              </p>
             </div>
           </PopoverContent>
         </Popover>

@@ -21,7 +21,6 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
 
@@ -45,7 +44,6 @@ const navItems = [
     title: "Orders",
     url: "/orders",
     icon: ShoppingCart,
-    badge: "12",
   },
   {
     title: "Settings",
@@ -103,18 +101,6 @@ export function AppSidebar() {
                       <NavLink to={item.url} className="flex items-center gap-2.5">
                         <item.icon className="size-4 shrink-0" />
                         <span className="font-medium">{item.title}</span>
-                        {item.badge && (
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              "ml-auto h-5 min-w-5 justify-center px-1.5 text-xs",
-                              isActive &&
-                                "bg-primary-foreground/20 text-primary-foreground"
-                            )}
-                          >
-                            {item.badge}
-                          </Badge>
-                        )}
                       </NavLink>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

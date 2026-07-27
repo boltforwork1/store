@@ -68,8 +68,8 @@ export function SettingsPage() {
             <CardContent className="space-y-5">
               <div className="flex items-center gap-4">
                 <Avatar className="size-16">
-                  <AvatarFallback className="text-lg font-bold bg-primary text-primary-foreground rounded-xl">
-                    NC
+                  <AvatarFallback className="text-lg font-bold bg-muted text-muted-foreground rounded-xl">
+                    —
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col gap-1.5">
@@ -81,13 +81,13 @@ export function SettingsPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="company-name">Company name</Label>
-                  <Input id="company-name" defaultValue="NexCommerce Inc." />
+                  <Input id="company-name" placeholder="Your company name" />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="industry">Industry</Label>
-                  <Select defaultValue="ecommerce">
+                  <Select>
                     <SelectTrigger id="industry">
-                      <SelectValue />
+                      <SelectValue placeholder="Select industry" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="ecommerce">E-Commerce</SelectItem>
@@ -99,13 +99,13 @@ export function SettingsPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="website">Website</Label>
-                  <Input id="website" defaultValue="https://nexco.io" type="url" />
+                  <Input id="website" placeholder="https://" type="url" />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="timezone">Timezone</Label>
-                  <Select defaultValue="est">
+                  <Select>
                     <SelectTrigger id="timezone">
-                      <SelectValue />
+                      <SelectValue placeholder="Select timezone" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="est">Eastern Time (ET)</SelectItem>
@@ -120,7 +120,7 @@ export function SettingsPage() {
                   <Textarea
                     id="bio"
                     rows={3}
-                    defaultValue="Enterprise e-commerce operations platform serving B2B and B2C channels worldwide."
+                    placeholder="Briefly describe your business — this will be used to map your Noon Partner profile."
                   />
                 </div>
               </div>
@@ -163,9 +163,9 @@ export function SettingsPage() {
                     <p className="text-xs text-muted-foreground">Select your preferred language</p>
                   </div>
                 </div>
-                <Select defaultValue="en">
+                <Select>
                   <SelectTrigger className="w-32 h-8">
-                    <SelectValue />
+                    <SelectValue placeholder="Language" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="en">English</SelectItem>
@@ -239,8 +239,8 @@ export function SettingsPage() {
                 { title: "New orders", description: "Get notified when a new order comes in", enabled: true },
                 { title: "Low stock alerts", description: "Alert when a product drops below threshold", enabled: true },
                 { title: "Payment confirmations", description: "Notify on successful payments", enabled: true },
-                { title: "Shipment updates", description: "Updates on outbound shipments", enabled: false },
-                { title: "Weekly digest", description: "A weekly summary of your store performance", enabled: false },
+                { title: "Shipment updates", description: "Updates on outbound shipments", enabled: true },
+                { title: "Weekly digest", description: "A weekly summary of your store performance", enabled: true },
                 { title: "Security alerts", description: "Important account security notifications", enabled: true },
               ].map((item, i, arr) => (
                 <div
