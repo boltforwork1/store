@@ -10,6 +10,10 @@ const NOON_BASE = "https://noon-api-gateway.noon.partners"
 const NOON_EXPORT_CREATE_URL = `${NOON_BASE}/v1/export/create`
 const NOON_EXPORT_STATUS_URL = `${NOON_BASE}/v1/export/status`
 
+// Per the Noon Partner API spec, ALL requests must include a User-Agent header
+// identifying the application. Requests without it may be rejected.
+const USER_AGENT = "NexCommerce/1.0.0"
+
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
@@ -67,6 +71,7 @@ async function callNoonExport(
     headers: {
       "Content-Type": "application/json",
       Cookie: cookie,
+      "User-Agent": USER_AGENT,
     },
     body: JSON.stringify(payload),
   })
@@ -176,7 +181,11 @@ async function pollExportStatus(exportCode: string): Promise<string> {
  * table. Returns the number of rows upserted.
  */
 async function processExport(downloadUrl: string): Promise<number> {
-  const response = await fetch(downloadUrl)
+  const response = await fetch(downloadUrl, {
+    headers: {
+      "User-Agent": USER_AGENT,
+    },
+  })
   if (!response.ok) {
     throw new Error(`Failed to download export file (${response.status})`)
   }

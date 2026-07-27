@@ -1,11 +1,15 @@
 import { createClient } from "npm:@supabase/supabase-js@2.110.8"
-import { SignJWT } from "npm:jose@5.9.6"
+import { SignJWT, importPKCS8 } from "npm:jose@5.9.6"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 }
+
+// Per the Noon Partner API spec, ALL requests must include a User-Agent header
+// identifying the application. Requests without it may be rejected.
+const USER_AGENT = "NexCommerce/1.0.0"
 
 const NOON_LOGIN_URL =
   "https://noon-api-gateway.noon.partners/identity/public/v1/api/login"
@@ -21,24 +25,59 @@ type CachedCookie = {
   updated_at: string
 }
 
-/**
- * Read a required string env var. Throws a clear error if missing so the
- * caller (and the dashboard operator) sees exactly which credential is unset.
- */
-function requireEnv(name: string): string {
-  const value = Deno.env.get(name)
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`)
-  }
-  return value
+type ServiceAccountKey = {
+  key_id: string
+  private_key: string
+  channel_identifier: string
+  project_code: string
 }
 
 /**
- * Noon's private key is stored as a PEM string in an env var. When loaded from
- * a `.env` file, literal `\n` sequences are often preserved as two characters
- * rather than real newlines, which breaks PEM parsing. This helper converts
- * any escaped `\n` into actual newlines and trims surrounding whitespace so
- * the key imports cleanly into WebCrypto via jose.
+ * Resolve Noon service account credentials. The spec describes a downloaded
+ * `.json` key file; we support that via the `NOON_SERVICE_ACCOUNT_KEY` env var
+ * (the full JSON content). For backward compatibility we also fall back to the
+ * individual env vars that were previously configured.
+ */
+function loadServiceAccount(): ServiceAccountKey {
+  const jsonKey = Deno.env.get("NOON_SERVICE_ACCOUNT_KEY")
+  if (jsonKey) {
+    try {
+      const parsed = JSON.parse(jsonKey) as Partial<ServiceAccountKey>
+      if (parsed.key_id && parsed.private_key && parsed.channel_identifier && parsed.project_code) {
+        return parsed as ServiceAccountKey
+      }
+    } catch {
+      // fall through to individual env vars
+    }
+  }
+
+  const keyId = Deno.env.get("NOON_KEY_ID")
+  const privateKey = Deno.env.get("NOON_PRIVATE_KEY")
+  const channelIdentifier = Deno.env.get("NOON_CHANNEL_IDENTIFIER")
+  const projectCode = Deno.env.get("NOON_PROJECT_CODE")
+
+  if (!keyId || !privateKey || !channelIdentifier || !projectCode) {
+    throw new Error(
+      "Noon service account credentials are not configured. Set either " +
+      "NOON_SERVICE_ACCOUNT_KEY (the JSON key file content) or all of " +
+      "NOON_KEY_ID, NOON_PRIVATE_KEY, NOON_CHANNEL_IDENTIFIER, and NOON_PROJECT_CODE."
+    )
+  }
+
+  return {
+    key_id: keyId,
+    private_key: privateKey,
+    channel_identifier: channelIdentifier,
+    project_code: projectCode,
+  }
+}
+
+/**
+ * Noon's private key is stored as a PEM string in an env var or JSON key. When
+ * loaded from a `.env` file, literal `\n` sequences are often preserved as two
+ * characters rather than real newlines, which breaks PEM parsing. This helper
+ * converts any escaped `\n` into actual newlines and trims surrounding
+ * whitespace so the key imports cleanly into WebCrypto via jose.
  */
 function normalizePrivateKey(raw: string): string {
   return raw
@@ -48,76 +87,50 @@ function normalizePrivateKey(raw: string): string {
 }
 
 /**
- * Build and sign the RS256 JWT Noon expects.
- * Header: { alg: "RS256", kid: NOON_KEY_ID }
- * Payload: iss = sub = NOON_CHANNEL_IDENTIFIER, short exp (5 minutes).
+ * Build and sign the RS256 JWT Noon expects, following the official spec:
+ * Header: { alg: "RS256", kid: <key_id> }
+ * Payload: iss = sub = <channel_identifier>, short exp (5 minutes).
  */
-async function generateNoonJwt(): Promise<string> {
-  const keyId = requireEnv("NOON_KEY_ID")
-  const privateKeyPem = normalizePrivateKey(requireEnv("NOON_PRIVATE_KEY"))
-  const channelIdentifier = requireEnv("NOON_CHANNEL_IDENTIFIER")
-
-  const privateKey = await importPKCS8(privateKeyPem)
+async function generateNoonJwt(account: ServiceAccountKey): Promise<string> {
+  const privateKeyPem = normalizePrivateKey(account.private_key)
+  const privateKey = await importPKCS8(privateKeyPem, "RS256")
 
   const now = Math.floor(Date.now() / 1000)
   const exp = now + 5 * 60 // 5 minutes — short-lived, as required
 
   return await new SignJWT({})
-    .setProtectedHeader({ alg: "RS256", kid: keyId })
-    .setIssuer(channelIdentifier)
-    .setSubject(channelIdentifier)
+    .setProtectedHeader({ alg: "RS256", kid: account.key_id })
+    .setIssuer(account.channel_identifier)
+    .setSubject(account.channel_identifier)
     .setIssuedAt(now)
     .setExpirationTime(exp)
     .sign(privateKey)
 }
 
 /**
- * Import a PEM-encoded PKCS#8 RSA private key into a WebCrypto CryptoKey.
- * jose's `importPKCS8` handles the PEM-to-DER decoding and key construction.
- */
-async function importPKCS8(pem: string): Promise<CryptoKey> {
-  const { importPKCS8 } = await import("npm:jose@5.9.6")
-  return await importPKCS8(pem, "RS256")
-}
-
-/**
  * POST the signed JWT to Noon's login endpoint and return the session cookie
- * extracted from the `Set-Cookie` response header(s).
+ * extracted from the `Set-Cookie` response header(s). Includes the mandatory
+ * User-Agent header per the Noon API specification.
  */
-async function loginToNoon(jwt: string): Promise<{
+async function loginToNoon(jwt: string, account: ServiceAccountKey): Promise<{
   cookie: string
   expiresAt: Date | null
 }> {
-  const projectCode = requireEnv("NOON_PROJECT_CODE")
-
-  console.log("[noon-auth] Sending login request", {
-    url: NOON_LOGIN_URL,
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${jwt}`,
-    },
-    body: {
-      token: jwt,
-      default_project_code: projectCode,
-    },
-  })
-
   const response = await fetch(NOON_LOGIN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${jwt}`,
+      "User-Agent": USER_AGENT,
     },
     body: JSON.stringify({
       token: jwt,
-      default_project_code: projectCode,
+      default_project_code: account.project_code,
     }),
   })
 
   if (!response.ok) {
     const text = await response.text().catch(() => "")
-    console.error(`[noon-auth] Noon login failed (${response.status}):`, text)
     throw new Error(
       `Noon login failed (${response.status}): ${text || response.statusText}`
     )
@@ -219,12 +232,13 @@ function isCookieFresh(cached: CachedCookie): boolean {
 }
 
 /**
- * Authenticate to Noon (generating a fresh JWT and performing the login) and
- * cache the resulting session cookie. Returns the cookie string.
+ * Authenticate to Noon (generating a fresh JWT from the service account key and
+ * performing the login) and cache the resulting session cookie.
  */
 async function authenticate(): Promise<string> {
-  const jwt = await generateNoonJwt()
-  const { cookie, expiresAt } = await loginToNoon(jwt)
+  const account = loadServiceAccount()
+  const jwt = await generateNoonJwt(account)
+  const { cookie, expiresAt } = await loginToNoon(jwt, account)
   await cacheCookie(cookie, expiresAt)
   return cookie
 }
