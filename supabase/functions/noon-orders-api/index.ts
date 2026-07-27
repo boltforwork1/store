@@ -75,7 +75,7 @@ async function getSessionCookie(force = false): Promise<string> {
 async function callNoonOrders(
   cookie: string,
   payload: Record<string, unknown>
-): Promise<{ status: number; statusText: string; text: string; body: unknown }> {
+): Promise<{ ok: boolean; status: number; statusText: string; text: string; body: unknown }> {
   const response = await fetch(NOON_ORDERS_LIST_URL, {
     method: "POST",
     headers: {
@@ -94,7 +94,63 @@ async function callNoonOrders(
     body = textBody
   }
 
-  return { status: response.status, statusText: response.statusText, text: textBody, body }
+  return { ok: response.ok, status: response.status, statusText: response.statusText, text: textBody, body }
+}
+
+const NOON_SUCCESS_STATUS_CODES = new Set([
+  "ok",
+  "success",
+  "successful",
+  "succeeded",
+  "completed",
+  "200",
+  "true",
+])
+
+/**
+ * Inspect a Noon response body for an embedded error status. Noon frequently
+ * answers with HTTP 200 but signals failure through a `status` object (or a
+ * top-level `error`/`errors` field). Returns an error message string when the
+ * body indicates failure, or null when the body looks successful.
+ */
+function extractNoonError(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null
+  const obj = body as Record<string, unknown>
+
+  const status = obj.status
+  if (status && typeof status === "object") {
+    const s = status as Record<string, unknown>
+    const code =
+      typeof s.status_code === "string" ? s.status_code :
+      typeof s.code === "string" ? s.code : ""
+    if (code && !NOON_SUCCESS_STATUS_CODES.has(code.toLowerCase())) {
+      const msg =
+        typeof s.message === "string" ? s.message :
+        typeof s.description === "string" ? s.description :
+        typeof s.detail === "string" ? s.detail : ""
+      return msg ? `Noon API Error [${code}]: ${msg}` : `Noon API Error [${code}]`
+    }
+  }
+
+  if (typeof status === "string" && !NOON_SUCCESS_STATUS_CODES.has(status.toLowerCase())) {
+    return `Noon API Error: ${status}`
+  }
+
+  if (typeof obj.error === "string" && obj.error.trim() !== "") {
+    return obj.error
+  }
+
+  if (Array.isArray(obj.errors) && obj.errors.length > 0) {
+    const first = obj.errors[0]
+    const msg =
+      typeof first === "string" ? first :
+      (first && typeof first === "object" && typeof (first as Record<string, unknown>).message === "string")
+        ? String((first as Record<string, unknown>).message)
+        : JSON.stringify(first)
+    return `Noon API Error: ${msg}`
+  }
+
+  return null
 }
 
 /**
@@ -105,28 +161,25 @@ async function callNoonWithRetry(
   payload: Record<string, unknown>
 ): Promise<unknown> {
   const cookie = await getSessionCookie(false)
-  const first = await callNoonOrders(cookie, payload)
+  let result = await callNoonOrders(cookie, payload)
 
-  if (first.status === 401) {
+  if (result.status === 401) {
     const freshCookie = await getSessionCookie(true)
-    const retry = await callNoonOrders(freshCookie, payload)
-
-    if (retry.status !== 200) {
-      throw new Error(
-        `Noon API Error [${retry.status} ${retry.statusText}]: ${retry.text || "Empty Body"}`
-      )
-    }
-
-    return retry.body
+    result = await callNoonOrders(freshCookie, payload)
   }
 
-  if (first.status !== 200) {
+  if (!result.ok) {
     throw new Error(
-      `Noon API Error [${first.status} ${first.statusText}]: ${first.text || "Empty Body"}`
+      `Noon API Error [${result.status} ${result.statusText}]: ${result.text || "Empty Body"}`
     )
-}
+  }
 
-  return first.body
+  const bodyError = extractNoonError(result.body)
+  if (bodyError) {
+    throw new Error(bodyError)
+  }
+
+  return result.body
 }
 
 function coerceNumber(value: unknown): number {

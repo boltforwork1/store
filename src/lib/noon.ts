@@ -26,6 +26,7 @@ export type NoonResult = {
   status: number
   data: unknown
   url?: string
+  error?: string
 }
 
 async function callNoonFunction(
@@ -249,5 +250,5 @@ export async function fetchNoonOrdersApi(params: {
 }): Promise<NoonOrdersResult> {
   const result = await callNoonFunction("noon-orders-api", params)
   const data = (result.data ?? {}) as { count?: number; orders?: NoonFetchedOrder[] }
-  return { ok: result.ok, count: data.count, orders: data.orders }
+  return { ok: result.ok, count: data.count, orders: data.orders, error: result.error }
 }
