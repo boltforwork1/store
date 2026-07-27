@@ -23,6 +23,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/hooks/use-auth"
 
 const navItems = [
   {
@@ -55,6 +56,10 @@ const navItems = [
 
 export function AppSidebar() {
   const location = useLocation()
+  const { user } = useAuth()
+  const userEmail = user?.email ?? ""
+  const userInitial = userEmail.charAt(0).toUpperCase() || "U"
+  const userName = user?.user_metadata?.full_name ?? userEmail.split("@")[0] ?? "User"
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">
@@ -129,14 +134,14 @@ export function AppSidebar() {
               tooltip="User Profile"
             >
               <Avatar className="size-7 shrink-0">
-                <AvatarImage src="" alt="User" />
+                <AvatarImage src="" alt={userName} />
                 <AvatarFallback className="text-xs font-semibold bg-primary text-primary-foreground">
-                  JD
+                  {userInitial}
                 </AvatarFallback>
               </Avatar>
               <div className="flex flex-col gap-0.5 group-data-[collapsible=icon]:hidden">
-                <span className="text-sm font-medium leading-none">James Doe</span>
-                <span className="text-xs text-muted-foreground">james@nexco.io</span>
+                <span className="text-sm font-medium leading-none">{userName}</span>
+                <span className="text-xs text-muted-foreground">{userEmail}</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>

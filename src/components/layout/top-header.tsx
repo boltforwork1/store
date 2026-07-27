@@ -1,5 +1,6 @@
-import { useLocation } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { Bell, Search, SunMoon } from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
@@ -63,7 +64,12 @@ const notifications = [
 
 export function TopHeader() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { signOut, user } = useAuth()
   const { theme, setTheme } = useTheme()
+  const userEmail = user?.email ?? ""
+  const userInitial = userEmail.charAt(0).toUpperCase() || "U"
+  const userName = user?.user_metadata?.full_name ?? userEmail.split("@")[0] ?? "User"
   const pageInfo = PAGE_TITLES[location.pathname] ?? { title: "Dashboard", description: "" }
   const unreadCount = notifications.filter((n) => n.unread).length
 
@@ -165,18 +171,18 @@ export function TopHeader() {
               className="h-8 w-8 rounded-lg p-0 ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Avatar className="size-8">
-                <AvatarImage src="" alt="James Doe" />
+                <AvatarImage src="" alt={userName} />
                 <AvatarFallback className="rounded-lg text-xs font-semibold bg-primary text-primary-foreground">
-                  JD
+                  {userInitial}
                 </AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuLabel className="flex flex-col gap-0.5">
-              <span>James Doe</span>
+              <span>{userName}</span>
               <span className="text-xs font-normal text-muted-foreground">
-                james@nexco.io
+                {userEmail}
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -184,7 +190,13 @@ export function TopHeader() {
             <DropdownMenuItem>Billing</DropdownMenuItem>
             <DropdownMenuItem>Team</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive focus:text-destructive">
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={async () => {
+                await signOut()
+                navigate("/login", { replace: true })
+              }}
+            >
               Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
