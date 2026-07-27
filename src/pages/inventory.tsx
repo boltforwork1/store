@@ -1,19 +1,11 @@
 import { useEffect, useState } from "react"
-import { Download, Package2, Warehouse, RefreshCw, Database, Pencil, Loader2 } from "lucide-react"
+import { Package2, Warehouse, RefreshCw, Search, Loader2, Check, X, PackageSearch } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -23,7 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { supabase } from "@/lib/supabase"
-import { updateNoonStock } from "@/lib/noon"
+import { fetchNoonStock, updateNoonStock } from "@/lib/noon"
 import { cn } from "@/lib/utils"
 
 type InventoryRow = {
@@ -35,6 +27,14 @@ type InventoryRow = {
   is_active: boolean | null
 }
 
+type LookupResult = {
+  warehouse_code: string
+  partner_sku: string
+  qty: number
+  status_code: string
+  message?: string
+}
+
 function getStockLevel(qty: number) {
   if (qty === 0) return { label: "Out of Stock", color: "text-red-600 dark:text-red-400" }
   if (qty < 10) return { label: "Low Stock", color: "text-amber-600 dark:text-amber-400" }
@@ -44,9 +44,16 @@ function getStockLevel(qty: number) {
 export function InventoryPage() {
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<InventoryRow[]>([])
-  const [updateOpen, setUpdateOpen] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [form, setForm] = useState({ warehouseCode: "", partnerSku: "", qty: "" })
+
+  // Lookup form state
+  const [lookupWarehouse, setLookupWarehouse] = useState("")
+  const [lookupSku, setLookupSku] = useState("")
+  const [lookingUp, setLookingUp] = useState(false)
+  const [lookupResult, setLookupResult] = useState<LookupResult | null>(null)
+
+  // Quick update state (inline on a lookup result)
+  const [newQty, setNewQty] = useState("")
+  const [updating, setUpdating] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -71,21 +78,11 @@ export function InventoryPage() {
   const outOfStock = items.filter((i) => (i.stock_qty ?? 0) === 0).length
   const totalUnits = items.reduce((sum, i) => sum + (i.stock_qty ?? 0), 0)
 
-  function openUpdateForm(prefill?: Partial<InventoryRow>) {
-    setForm({
-      warehouseCode: "",
-      partnerSku: prefill?.partner_sku ?? "",
-      qty: prefill?.stock_qty != null ? String(prefill.stock_qty) : "",
-    })
-    setUpdateOpen(true)
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleLookup(e: React.FormEvent) {
     e.preventDefault()
 
-    const warehouseCode = form.warehouseCode.trim()
-    const partnerSku = form.partnerSku.trim()
-    const qtyNum = Number(form.qty)
+    const warehouseCode = lookupWarehouse.trim()
+    const partnerSku = lookupSku.trim()
 
     if (!warehouseCode) {
       toast.error("Warehouse code is required")
@@ -95,42 +92,104 @@ export function InventoryPage() {
       toast.error("Partner SKU is required")
       return
     }
+
+    setLookingUp(true)
+    setLookupResult(null)
+    const toastId = toast.loading("Fetching stock from Noon…")
+
+    try {
+      const result = await fetchNoonStock([
+        { warehouse_code: warehouseCode, partner_sku: partnerSku },
+      ])
+
+      const data = (result.data ?? {}) as {
+        items?: Array<{ warehouse_code?: string; partner_sku?: string; qty?: number; status?: { status_code?: string; message?: string } }>
+      }
+      const responseItems = data.items ?? []
+
+      if (responseItems.length === 0) {
+        toast.error("No stock data returned for that SKU", { id: toastId })
+        return
+      }
+
+      const first = responseItems[0]
+      const res: LookupResult = {
+        warehouse_code: first.warehouse_code ?? warehouseCode,
+        partner_sku: first.partner_sku ?? partnerSku,
+        qty: Number(first.qty ?? 0),
+        status_code: first.status?.status_code ?? "UNKNOWN",
+        message: first.status?.message,
+      }
+
+      setLookupResult(res)
+      setNewQty(String(res.qty))
+
+      if (res.status_code === "OK") {
+        toast.success(`Found ${res.qty} units for ${partnerSku}`, { id: toastId })
+      } else {
+        toast.warning(res.message ?? `Lookup returned status: ${res.status_code}`, { id: toastId })
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unexpected error"
+      toast.error(message, { id: toastId })
+    } finally {
+      setLookingUp(false)
+    }
+  }
+
+  async function handleQuickUpdate(e: React.FormEvent) {
+    e.preventDefault()
+
+    if (!lookupResult) return
+
+    const qtyNum = Number(newQty)
     if (!Number.isFinite(qtyNum) || qtyNum < 0) {
       toast.error("Quantity must be a non-negative number")
       return
     }
 
-    setSubmitting(true)
+    setUpdating(true)
     const toastId = toast.loading("Updating stock on Noon…")
 
     try {
       const result = await updateNoonStock([
-        { warehouse_code: warehouseCode, partner_sku: partnerSku, qty: qtyNum },
+        {
+          warehouse_code: lookupResult.warehouse_code,
+          partner_sku: lookupResult.partner_sku,
+          qty: qtyNum,
+        },
       ])
 
-      // Noon returns an `items` array; each item has a `status.status_code`.
-      const data = (result.data ?? {}) as { items?: Array<{ status?: { status_code?: string; message?: string } }> }
+      const data = (result.data ?? {}) as {
+        items?: Array<{ status?: { status_code?: string; message?: string }; qty?: number }>
+      }
       const responseItems = data.items ?? []
       const allOk = responseItems.length > 0 && responseItems.every(
         (it) => it.status?.status_code === "OK"
       )
 
       if (allOk) {
-        toast.success(`Stock updated for ${partnerSku}`, { id: toastId })
-        setUpdateOpen(false)
+        toast.success(`Stock updated to ${qtyNum} for ${lookupResult.partner_sku}`, { id: toastId })
+        setLookupResult((prev) => prev ? { ...prev, qty: qtyNum, status_code: "OK" } : prev)
         await load()
       } else {
-        // Partial or per-item failure: surface details from the first non-OK item.
         const failed = responseItems.find((it) => it.status?.status_code !== "OK")
-        const detail = failed?.status?.message ?? "One or more items were not accepted by Noon"
+        const detail = failed?.status?.message ?? "Noon did not accept the update"
         toast.error(detail, { id: toastId })
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error"
       toast.error(message, { id: toastId })
     } finally {
-      setSubmitting(false)
+      setUpdating(false)
     }
+  }
+
+  function clearLookup() {
+    setLookupWarehouse("")
+    setLookupSku("")
+    setLookupResult(null)
+    setNewQty("")
   }
 
   if (loading) {
@@ -152,39 +211,6 @@ export function InventoryPage() {
     )
   }
 
-  if (totalSkus === 0) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight">Inventory Management</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Real-time stock levels across all warehouses
-          </p>
-        </div>
-        <div className="flex min-h-[50vh] items-center justify-center">
-          <Card className="max-w-md text-center">
-            <CardContent className="space-y-4 pt-6">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-                <Database className="size-6 text-muted-foreground" />
-              </div>
-              <div className="space-y-1.5">
-                <h3 className="text-lg font-semibold">No inventory data yet</h3>
-                <p className="text-sm text-muted-foreground">
-                  Stock levels will populate automatically once you run a catalog
-                  sync from the Noon Partner API.
-                </p>
-              </div>
-              <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
-                <RefreshCw className="size-3.5" />
-                Refresh
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -199,14 +225,6 @@ export function InventoryPage() {
           <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
             <RefreshCw className="size-3.5" />
             Refresh
-          </Button>
-          <Button variant="outline" size="sm" className="gap-1.5">
-            <Download className="size-3.5" />
-            Export
-          </Button>
-          <Button size="sm" className="gap-1.5" onClick={() => openUpdateForm()}>
-            <Pencil className="size-3.5" />
-            Update Stock
           </Button>
         </div>
       </div>
@@ -279,133 +297,177 @@ export function InventoryPage() {
         </Card>
       </div>
 
-      {/* Inventory Table */}
+      {/* Stock Lookup + Quick Update */}
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-base">Stock Levels</CardTitle>
-          <CardDescription>All SKUs with current inventory</CardDescription>
+          <CardTitle className="text-base flex items-center gap-2">
+            <PackageSearch className="size-4 text-muted-foreground" />
+            Stock Lookup
+          </CardTitle>
+          <CardDescription>
+            Enter a warehouse code and SKU to fetch the live stock level from Noon, then update it inline.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="pl-6">SKU</TableHead>
-                <TableHead>Product</TableHead>
-                <TableHead className="text-right">Qty</TableHead>
-                <TableHead className="text-right">Price</TableHead>
-                <TableHead className="pr-6">Status</TableHead>
-                <TableHead className="pr-6 text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((item) => {
-                const qty = item.stock_qty ?? 0
-                const level = getStockLevel(qty)
-                return (
-                  <TableRow key={item.id} className="hover:bg-muted/30">
-                    <TableCell className="pl-6 font-mono text-xs text-muted-foreground">
-                      {item.partner_sku}
-                    </TableCell>
-                    <TableCell className="font-medium max-w-[260px] truncate">
-                      {item.name ?? item.partner_sku}
-                    </TableCell>
-                    <TableCell className="text-right font-semibold tabular-nums">{qty}</TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">
-                      {item.price != null ? `$${Number(item.price).toFixed(2)}` : "—"}
-                    </TableCell>
-                    <TableCell className="pr-6">
-                      <span className={cn("text-xs font-medium", level.color)}>
-                        {level.label}
-                      </span>
-                    </TableCell>
-                    <TableCell className="pr-6 text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 gap-1.5 text-xs"
-                        onClick={() => openUpdateForm(item)}
-                      >
-                        <Pencil className="size-3" />
-                        Update
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+        <CardContent className="space-y-4">
+          <form onSubmit={handleLookup} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+            <div className="space-y-2">
+              <Label htmlFor="lookup-warehouse">Warehouse code</Label>
+              <Input
+                id="lookup-warehouse"
+                placeholder="e.g. DXB-W01"
+                value={lookupWarehouse}
+                onChange={(e) => setLookupWarehouse(e.target.value)}
+                disabled={lookingUp}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="lookup-sku">Partner SKU</Label>
+              <Input
+                id="lookup-sku"
+                placeholder="e.g. SKU-12345"
+                value={lookupSku}
+                onChange={(e) => setLookupSku(e.target.value)}
+                disabled={lookingUp}
+                required
+              />
+            </div>
+            <Button type="submit" disabled={lookingUp} className="gap-1.5">
+              {lookingUp ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Searching…
+                </>
+              ) : (
+                <>
+                  <Search className="size-3.5" />
+                  Lookup
+                </>
+              )}
+            </Button>
+          </form>
+
+          {/* Lookup result + quick update */}
+          {lookupResult && (
+            <div className="rounded-lg border bg-muted/30 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold">{lookupResult.partner_sku}</span>
+                    <span
+                      className={cn(
+                        "rounded-full border px-2 py-0.5 text-xs font-medium",
+                        lookupResult.status_code === "OK"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
+                          : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"
+                      )}
+                    >
+                      {lookupResult.status_code}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Warehouse: <span className="font-mono">{lookupResult.warehouse_code}</span>
+                    {" · "}Current qty: <span className="font-semibold tabular-nums">{lookupResult.qty}</span>
+                  </p>
+                </div>
+                <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" onClick={clearLookup}>
+                  <X className="size-3" />
+                  Clear
+                </Button>
+              </div>
+
+              <form onSubmit={handleQuickUpdate} className="mt-4 flex flex-wrap items-end gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="new-qty" className="text-xs">New quantity</Label>
+                  <Input
+                    id="new-qty"
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="e.g. 50"
+                    value={newQty}
+                    onChange={(e) => setNewQty(e.target.value)}
+                    disabled={updating}
+                    required
+                    className="w-40"
+                  />
+                </div>
+                <Button type="submit" disabled={updating} className="gap-1.5">
+                  {updating ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Updating…
+                    </>
+                  ) : (
+                    <>
+                      <Check className="size-3.5" />
+                      Quick Update
+                    </>
+                  )}
+                </Button>
+              </form>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Update Stock Dialog */}
-      <Dialog open={updateOpen} onOpenChange={setUpdateOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Update Stock</DialogTitle>
-            <DialogDescription>
-              Push a new stock level to Noon for a single SKU and warehouse.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="warehouse-code">Warehouse code</Label>
-              <Input
-                id="warehouse-code"
-                placeholder="e.g. DXB-W01"
-                value={form.warehouseCode}
-                onChange={(e) => setForm((f) => ({ ...f, warehouseCode: e.target.value }))}
-                disabled={submitting}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="partner-sku">Partner SKU</Label>
-              <Input
-                id="partner-sku"
-                placeholder="e.g. SKU-12345"
-                value={form.partnerSku}
-                onChange={(e) => setForm((f) => ({ ...f, partnerSku: e.target.value }))}
-                disabled={submitting}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="qty">Quantity</Label>
-              <Input
-                id="qty"
-                type="number"
-                min={0}
-                step={1}
-                placeholder="e.g. 50"
-                value={form.qty}
-                onChange={(e) => setForm((f) => ({ ...f, qty: e.target.value }))}
-                disabled={submitting}
-                required
-              />
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setUpdateOpen(false)}
-                disabled={submitting}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={submitting} className="gap-1.5">
-                {submitting ? (
-                  <>
-                    <Loader2 className="size-3.5 animate-spin" />
-                    Updating…
-                  </>
-                ) : (
-                  "Update Stock"
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* Inventory Table */}
+      {totalSkus === 0 ? (
+        <Card className="flex flex-col items-center justify-center py-16 text-center">
+          <CardContent className="space-y-2">
+            <PackageSearch className="mx-auto size-10 text-muted-foreground/40" />
+            <p className="text-sm font-medium">No products yet</p>
+            <p className="text-xs text-muted-foreground">
+              Sync with the Noon catalog to populate your inventory list.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-base">Stock Levels</CardTitle>
+            <CardDescription>All SKUs with last-synced inventory</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="pl-6">SKU</TableHead>
+                  <TableHead>Product</TableHead>
+                  <TableHead className="text-right">Qty</TableHead>
+                  <TableHead className="text-right">Price</TableHead>
+                  <TableHead className="pr-6">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((item) => {
+                  const qty = item.stock_qty ?? 0
+                  const level = getStockLevel(qty)
+                  return (
+                    <TableRow key={item.id} className="hover:bg-muted/30">
+                      <TableCell className="pl-6 font-mono text-xs text-muted-foreground">
+                        {item.partner_sku}
+                      </TableCell>
+                      <TableCell className="font-medium max-w-[260px] truncate">
+                        {item.name ?? item.partner_sku}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums">{qty}</TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">
+                        {item.price != null ? `$${Number(item.price).toFixed(2)}` : "—"}
+                      </TableCell>
+                      <TableCell className="pr-6">
+                        <span className={cn("text-xs font-medium", level.color)}>
+                          {level.label}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

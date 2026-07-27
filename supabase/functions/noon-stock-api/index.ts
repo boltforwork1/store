@@ -7,6 +7,7 @@ const corsHeaders = {
 }
 
 const NOON_BASE = "https://noon-api-gateway.noon.partners"
+const NOON_STOCK_LIST_URL = `${NOON_BASE}/stock/v1/stock-list`
 const NOON_STOCK_UPDATE_URL = `${NOON_BASE}/stock/v1/stock-update`
 
 // Per the Noon Partner API spec, ALL requests must include a User-Agent header
@@ -21,7 +22,7 @@ const supabase = createClient(
 type StockItem = {
   warehouse_code: string
   partner_sku: string
-  qty: number
+  qty?: number
 }
 
 type StockRequestBody = {
@@ -31,7 +32,7 @@ type StockRequestBody = {
 /**
  * Fetch a valid Noon session cookie from the noon-auth edge function. When
  * `force` is true the cached cookie is invalidated and a fresh login is
- * performed — used to recover from a 401 during a stock update call.
+ * performed — used to recover from a 401 during a stock call.
  */
 async function getSessionCookie(force = false): Promise<string> {
   const authUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/noon-auth`
@@ -60,15 +61,16 @@ async function getSessionCookie(force = false): Promise<string> {
 }
 
 /**
- * Call the Noon stock-update endpoint with the session cookie. Returns the
- * parsed JSON body and the HTTP status. If Noon responds with 401 the caller
- * can retry after forcing a re-authentication.
+ * Call a Noon stock endpoint with the session cookie. Returns the parsed JSON
+ * body and the HTTP status. If Noon responds with 401 the caller can retry
+ * after forcing a re-authentication.
  */
-async function callNoonStockUpdate(
+async function callNoonStock(
+  url: string,
   cookie: string,
   payload: StockRequestBody
 ): Promise<{ status: number; body: unknown }> {
-  const response = await fetch(NOON_STOCK_UPDATE_URL, {
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -90,20 +92,23 @@ async function callNoonStockUpdate(
 }
 
 /**
- * Call the Noon stock-update endpoint, transparently re-authenticating once
- * on 401. Returns the parsed response body.
+ * Call a Noon stock endpoint, transparently re-authenticating once on 401.
+ * Returns the parsed response body.
  */
-async function callNoonWithRetry(payload: StockRequestBody): Promise<unknown> {
+async function callNoonWithRetry(
+  url: string,
+  payload: StockRequestBody
+): Promise<unknown> {
   const cookie = await getSessionCookie(false)
-  const first = await callNoonStockUpdate(cookie, payload)
+  const first = await callNoonStock(url, cookie, payload)
 
   if (first.status === 401) {
     const freshCookie = await getSessionCookie(true)
-    const retry = await callNoonStockUpdate(freshCookie, payload)
+    const retry = await callNoonStock(url, freshCookie, payload)
 
     if (retry.status !== 200) {
       throw new Error(
-        `Noon stock update failed after re-auth (${retry.status}): ${JSON.stringify(retry.body)}`
+        `Noon stock call failed after re-auth (${retry.status}): ${JSON.stringify(retry.body)}`
       )
     }
 
@@ -112,7 +117,7 @@ async function callNoonWithRetry(payload: StockRequestBody): Promise<unknown> {
 
   if (first.status !== 200) {
     throw new Error(
-      `Noon stock update failed (${first.status}): ${JSON.stringify(first.body)}`
+      `Noon stock call failed (${first.status}): ${JSON.stringify(first.body)}`
     )
   }
 
@@ -120,9 +125,11 @@ async function callNoonWithRetry(payload: StockRequestBody): Promise<unknown> {
 }
 
 /**
- * Validate the incoming request body. Returns a typed payload or throws.
+ * Validate the incoming request body for either action. For `get`, `qty` is
+ * optional (and ignored). For `update`, `qty` is required and must be a
+ * non-negative number.
  */
-function validateBody(body: unknown): StockRequestBody {
+function validateBody(body: unknown, action: "get" | "update"): StockRequestBody {
   if (!body || typeof body !== "object") {
     throw new Error("Request body must be a JSON object")
   }
@@ -139,15 +146,21 @@ function validateBody(body: unknown): StockRequestBody {
     if (!item.partner_sku || typeof item.partner_sku !== "string") {
       throw new Error(`items[${idx}].partner_sku must be a non-empty string`)
     }
-    const qty = Number(item.qty)
-    if (!Number.isFinite(qty) || qty < 0) {
-      throw new Error(`items[${idx}].qty must be a non-negative number`)
-    }
-    return {
+
+    const result: StockItem = {
       warehouse_code: item.warehouse_code.trim(),
       partner_sku: item.partner_sku.trim(),
-      qty,
     }
+
+    if (action === "update") {
+      const qty = Number(item.qty)
+      if (!Number.isFinite(qty) || qty < 0) {
+        throw new Error(`items[${idx}].qty must be a non-negative number`)
+      }
+      result.qty = qty
+    }
+
+    return result
   })
 
   return { items: normalized }
@@ -159,14 +172,23 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const parsed = await req.json().catch(() => ({}))
-    const payload = validateBody(parsed)
+    const parsed = (await req.json().catch(() => ({}))) as { action?: string }
+    const action = parsed.action ?? "get"
 
-    const responseBody = await callNoonWithRetry(payload)
+    if (action !== "get" && action !== "update") {
+      return new Response(
+        JSON.stringify({ ok: false, error: `Unknown action: ${action}. Use "get" or "update".` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
 
-    // Noon's stock-update response contains an `items` array, each with a
-    // `status.status_code` of "OK" on success. We surface the raw body so the
-    // frontend can inspect per-item results and show appropriate toasts.
+    const payload = validateBody(parsed, action)
+    const url = action === "get" ? NOON_STOCK_LIST_URL : NOON_STOCK_UPDATE_URL
+    const responseBody = await callNoonWithRetry(url, payload)
+
+    // Noon's stock responses contain an `items` array. For `update`, each item
+    // carries a `status.status_code` of "OK" on success. We surface the raw
+    // body so the frontend can inspect per-item results and show toasts.
     return new Response(
       JSON.stringify({ ok: true, data: responseBody }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
