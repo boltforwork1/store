@@ -88,22 +88,21 @@ function normalizePrivateKey(raw: string): string {
 
 /**
  * Build and sign the RS256 JWT Noon expects, following the official spec:
- * Header: { alg: "RS256", kid: <key_id> }
- * Payload: iss = sub = <channel_identifier>, short exp (5 minutes).
+ * Header: { alg: "RS256", typ: "JWT" }
+ * Payload: { sub: <key_id>, iat: <now>, jti: <random uuid> }
  */
 async function generateNoonJwt(account: ServiceAccountKey): Promise<string> {
   const privateKeyPem = normalizePrivateKey(account.private_key)
   const privateKey = await importPKCS8(privateKeyPem, "RS256")
 
   const now = Math.floor(Date.now() / 1000)
-  const exp = now + 5 * 60 // 5 minutes — short-lived, as required
+  const jti = crypto.randomUUID()
 
   return await new SignJWT({})
-    .setProtectedHeader({ alg: "RS256", kid: account.key_id })
-    .setIssuer(account.channel_identifier)
-    .setSubject(account.channel_identifier)
+    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
+    .setSubject(account.key_id)
     .setIssuedAt(now)
-    .setExpirationTime(exp)
+    .setJti(jti)
     .sign(privateKey)
 }
 
@@ -120,7 +119,6 @@ async function loginToNoon(jwt: string, account: ServiceAccountKey): Promise<{
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${jwt}`,
       "User-Agent": USER_AGENT,
     },
     body: JSON.stringify({
@@ -136,16 +134,12 @@ async function loginToNoon(jwt: string, account: ServiceAccountKey): Promise<{
     )
   }
 
-  // The `Set-Cookie` header may appear multiple times. The Headers getter joins
-  // them with ", " which is not a valid cookie separator, so we read the raw
-  // headers from the response and join with "; " — the separator the Cookie
-  // request header expects when sending multiple cookies back.
-  const setCookieHeaders: string[] = []
-  response.headers.forEach((value, key) => {
-    if (key.toLowerCase() === "set-cookie") {
-      setCookieHeaders.push(value)
-    }
-  })
+  // Extract auth cookies from the login response. Prefer the structured
+  // getSetCookie() API when available (returns an array of Set-Cookie values),
+  // falling back to manually collecting the headers.
+  const setCookieHeaders: string[] =
+    response.headers.getSetCookie?.() ??
+    (response.headers.get("set-cookie") ? [response.headers.get("set-cookie") as string] : [])
 
   if (setCookieHeaders.length === 0) {
     throw new Error("Noon login succeeded but no Set-Cookie header was returned")
