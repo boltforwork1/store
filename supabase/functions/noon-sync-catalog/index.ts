@@ -28,9 +28,14 @@ type CachedCookie = {
  */
 async function getSessionCookie(force = false): Promise<string> {
   const authUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/noon-auth`
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? ""
   const response = await fetch(authUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${anonKey}`,
+      apikey: anonKey,
+    },
     body: JSON.stringify({ force }),
   })
 
