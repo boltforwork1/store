@@ -75,7 +75,7 @@ async function getSessionCookie(force = false): Promise<string> {
 async function callNoonOrders(
   cookie: string,
   payload: Record<string, unknown>
-): Promise<{ status: number; body: unknown }> {
+): Promise<{ status: number; statusText: string; body: unknown }> {
   const response = await fetch(NOON_ORDERS_LIST_URL, {
     method: "POST",
     headers: {
@@ -94,7 +94,7 @@ async function callNoonOrders(
     body = text
   }
 
-  return { status: response.status, body }
+  return { status: response.status, statusText: response.statusText, body }
 }
 
 /**
@@ -113,7 +113,7 @@ async function callNoonWithRetry(
 
     if (retry.status !== 200) {
       throw new Error(
-        `Noon API Error (${retry.status}): ${extractNoonError(retry.body)}`
+        `Noon API Error [${retry.status} ${retry.statusText}]: ${extractNoonError(retry.body) || "No body"}`
       )
     }
 
@@ -122,9 +122,9 @@ async function callNoonWithRetry(
 
   if (first.status !== 200) {
     throw new Error(
-      `Noon API Error (${first.status}): ${extractNoonError(first.body)}`
+      `Noon API Error [${first.status} ${first.statusText}]: ${extractNoonError(first.body) || "No body"}`
     )
-  }
+}
 
   return first.body
 }
@@ -241,11 +241,14 @@ Deno.serve(async (req: Request) => {
       )
     }
 
+    const now = new Date()
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+
     const payload: Record<string, unknown> = {
       warehouse_code: parsed.warehouse_code.trim(),
+      created_after: parsed.created_after ?? thirtyDaysAgo.toISOString(),
+      created_before: parsed.created_before ?? now.toISOString(),
     }
-    if (parsed.created_after) payload.created_after = parsed.created_after
-    if (parsed.created_before) payload.created_before = parsed.created_before
 
     const responseBody = await callNoonWithRetry(payload) as NoonListResponse
     const rawOrders = Array.isArray(responseBody.orders) ? responseBody.orders : []
