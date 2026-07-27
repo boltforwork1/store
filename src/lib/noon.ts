@@ -83,6 +83,84 @@ export function printNoonLabel(orderId: string): Promise<NoonResult> {
   return callNoonFunction("noon-print-label", { order_id: orderId })
 }
 
+export type SyncStage = "initializing" | "waiting" | "downloading" | "syncing" | "done"
+
+export type SyncProgress = {
+  stage: SyncStage
+  message: string
+  exportCode?: string
+  upserted?: number
+}
+
+export type SyncResult = {
+  ok: boolean
+  exportCode?: string
+  upserted?: number
+  error?: string
+}
+
+/**
+ * Run the full Noon catalog sync by driving the noon-sync-catalog edge
+ * function. The `onProgress` callback receives stage updates so the UI can
+ * show a descriptive loading state at each step.
+ */
+export async function syncNoonCatalog(
+  onProgress?: (progress: SyncProgress) => void
+): Promise<SyncResult> {
+  const report = (progress: SyncProgress) => onProgress?.(progress)
+
+  try {
+    report({ stage: "initializing", message: "Initializing export…" })
+
+    const createResult = (await callNoonFunction("noon-sync-catalog", {
+      action: "create",
+    })) as { ok: boolean; export_code?: string; error?: string }
+
+    if (!createResult.ok || !createResult.export_code) {
+      throw new Error(createResult.error ?? "Failed to create Noon export")
+    }
+
+    const exportCode = createResult.export_code
+
+    report({
+      stage: "waiting",
+      message: "Waiting for report…",
+      exportCode,
+    })
+
+    const statusResult = (await callNoonFunction("noon-sync-catalog", {
+      action: "sync",
+      export_code: exportCode,
+    })) as { ok: boolean; upserted?: number; error?: string }
+
+    if (!statusResult.ok) {
+      throw new Error(statusResult.error ?? "Noon sync failed")
+    }
+
+    report({
+      stage: "syncing",
+      message: "Syncing products…",
+      exportCode,
+    })
+
+    report({
+      stage: "done",
+      message: `Synced ${statusResult.upserted ?? 0} products`,
+      exportCode,
+      upserted: statusResult.upserted,
+    })
+
+    return {
+      ok: true,
+      exportCode,
+      upserted: statusResult.upserted,
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown sync error"
+    return { ok: false, error: message }
+  }
+}
+
 export type NoonOrder = {
   id: string
   noon_order_id: string
