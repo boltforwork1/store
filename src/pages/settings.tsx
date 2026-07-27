@@ -15,9 +15,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   Select,
   SelectContent,
@@ -192,34 +191,16 @@ export function SettingsPage() {
                 <Button size="sm">Invite member</Button>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
-              {[
-                { name: "James Doe", email: "james@nexco.io", role: "Owner", initials: "JD", active: true },
-                { name: "Sarah Chen", email: "sarah@nexco.io", role: "Admin", initials: "SC", active: true },
-                { name: "Marcus Webb", email: "m.webb@nexco.io", role: "Manager", initials: "MW", active: true },
-                { name: "Priya Nair", email: "p.nair@nexco.io", role: "Viewer", initials: "PN", active: false },
-              ].map((member, i, arr) => (
-                <div
-                  key={member.email}
-                  className={`flex items-center gap-4 px-6 py-4 ${i < arr.length - 1 ? "border-b" : ""}`}
-                >
-                  <Avatar className="size-8 shrink-0">
-                    <AvatarFallback className="text-xs font-semibold bg-muted">
-                      {member.initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{member.name}</p>
-                    <p className="text-xs text-muted-foreground">{member.email}</p>
-                  </div>
-                  <Badge variant={member.active ? "secondary" : "outline"} className="text-xs">
-                    {member.role}
-                  </Badge>
-                  <Button variant="ghost" size="sm" className="text-xs">
-                    Edit
-                  </Button>
+            <CardContent>
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                  <Users className="size-5 text-muted-foreground" />
                 </div>
-              ))}
+                <p className="mt-4 text-sm font-medium">No team members yet</p>
+                <p className="mt-1 text-xs text-muted-foreground max-w-sm">
+                  Invite teammates to collaborate on managing your Noon catalog and orders.
+                </p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -229,37 +210,19 @@ export function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Current Plan</CardTitle>
-              <CardDescription>You are on the Enterprise plan</CardDescription>
+              <CardDescription>Your subscription and usage details</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-4">
-                <div>
-                  <p className="font-semibold">Enterprise</p>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    Unlimited products · 5 warehouses · Priority support
-                  </p>
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                  <CreditCard className="size-5 text-muted-foreground" />
                 </div>
-                <div className="text-right">
-                  <p className="text-2xl font-bold">$499<span className="text-sm font-normal text-muted-foreground">/mo</span></p>
-                  <Button variant="outline" size="sm" className="mt-2">Manage plan</Button>
-                </div>
+                <p className="mt-4 text-sm font-medium">No active subscription</p>
+                <p className="mt-1 text-xs text-muted-foreground max-w-sm">
+                  Subscribe to a plan to unlock full access to catalog sync, order management, and reporting features.
+                </p>
+                <Button size="sm" className="mt-4">View plans</Button>
               </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Payment Method</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-3 rounded-lg border p-4">
-                <CreditCard className="size-5 text-muted-foreground" />
-                <div>
-                  <p className="text-sm font-medium">Visa ending in 4242</p>
-                  <p className="text-xs text-muted-foreground">Expires 12/2027</p>
-                </div>
-                <Badge className="ml-auto" variant="secondary">Default</Badge>
-              </div>
-              <Button variant="outline" size="sm">Add payment method</Button>
             </CardContent>
           </Card>
         </TabsContent>

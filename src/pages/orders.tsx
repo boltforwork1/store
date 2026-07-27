@@ -1,9 +1,9 @@
-import { useState } from "react"
-import { Search, Filter, Download, Eye, MoreHorizontal, ChevronLeft, ChevronRight } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Search, ListFilter as Filter, Download, Eye, MoveHorizontal as MoreHorizontal, ChevronLeft, ChevronRight, RefreshCw, Database } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -19,50 +19,125 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 
-const orders = [
-  { id: "#4521", customer: "Acme Corp", email: "billing@acme.com", items: 3, total: "$1,240.00", payment: "Credit Card", status: "Completed", date: "Dec 15, 2024", channel: "Web" },
-  { id: "#4520", customer: "Blue Ocean LLC", email: "orders@blueocean.io", items: 1, total: "$890.00", payment: "Wire Transfer", status: "Processing", date: "Dec 15, 2024", channel: "API" },
-  { id: "#4519", customer: "Stark Industries", email: "tony@stark.com", items: 2, total: "$2,100.00", payment: "Credit Card", status: "Shipped", date: "Dec 14, 2024", channel: "Web" },
-  { id: "#4518", customer: "Wayne Enterprises", email: "finance@wayne.com", items: 1, total: "$340.00", payment: "PayPal", status: "Completed", date: "Dec 14, 2024", channel: "Mobile" },
-  { id: "#4517", customer: "Initech", email: "peter@initech.com", items: 4, total: "$128.00", payment: "Credit Card", status: "Pending", date: "Dec 14, 2024", channel: "Web" },
-  { id: "#4516", customer: "Globex Corp", email: "orders@globex.com", items: 2, total: "$3,400.00", payment: "Wire Transfer", status: "Shipped", date: "Dec 13, 2024", channel: "API" },
-  { id: "#4515", customer: "Soylent Corp", email: "b2b@soylent.co", items: 10, total: "$5,800.00", payment: "Credit Card", status: "Completed", date: "Dec 13, 2024", channel: "Web" },
-  { id: "#4514", customer: "Umbrella Corp", email: "supply@umbrella.com", items: 6, total: "$780.00", payment: "Credit Card", status: "Cancelled", date: "Dec 12, 2024", channel: "Mobile" },
-  { id: "#4513", customer: "Hooli Inc", email: "procurement@hooli.com", items: 2, total: "$1,598.00", payment: "Wire Transfer", status: "Completed", date: "Dec 12, 2024", channel: "API" },
-  { id: "#4512", customer: "Pied Piper", email: "ops@piedpiper.com", items: 1, total: "$299.00", payment: "Credit Card", status: "Refunded", date: "Dec 11, 2024", channel: "Web" },
-]
+type OrderRow = {
+  id: string
+  noon_order_id: string | null
+  order_date: string | null
+  total_price: number | null
+  status: string | null
+}
 
 const STATUS_STYLES: Record<string, string> = {
   Completed: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300",
   Processing: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300",
   Shipped: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-300",
   Pending: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300",
+  Acknowledged: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300",
   Cancelled: "bg-red-50 text-red-600 border-red-200 dark:bg-red-950 dark:text-red-300",
   Refunded: "bg-muted text-muted-foreground border-border",
 }
 
-const statusCounts = {
-  all: orders.length,
-  pending: orders.filter((o) => o.status === "Pending").length,
-  processing: orders.filter((o) => o.status === "Processing").length,
-  shipped: orders.filter((o) => o.status === "Shipped").length,
-  completed: orders.filter((o) => o.status === "Completed").length,
-}
-
-const tabs = [
-  { label: "All Orders", value: "all", count: statusCounts.all },
-  { label: "Pending", value: "Pending", count: statusCounts.pending },
-  { label: "Processing", value: "Processing", count: statusCounts.processing },
-  { label: "Shipped", value: "Shipped", count: statusCounts.shipped },
-  { label: "Completed", value: "Completed", count: statusCounts.completed },
-]
-
 export function OrdersPage() {
+  const [loading, setLoading] = useState(true)
+  const [orders, setOrders] = useState<OrderRow[]>([])
   const [activeTab, setActiveTab] = useState("all")
+  const [search, setSearch] = useState("")
 
-  const filtered = activeTab === "all" ? orders : orders.filter((o) => o.status === activeTab)
+  const load = async () => {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from("orders")
+      .select("id, noon_order_id, order_date, total_price, status")
+      .order("order_date", { ascending: false })
+
+    if (error) {
+      console.error("Failed to load orders:", error.message)
+    }
+    setOrders((data as OrderRow[] | null) ?? [])
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  const statusCounts = {
+    all: orders.length,
+    Pending: orders.filter((o) => o.status === "Pending").length,
+    Acknowledged: orders.filter((o) => o.status === "Acknowledged").length,
+    Shipped: orders.filter((o) => o.status === "Shipped").length,
+    Completed: orders.filter((o) => o.status === "Completed").length,
+  }
+
+  const tabs = [
+    { label: "All Orders", value: "all", count: statusCounts.all },
+    { label: "Pending", value: "Pending", count: statusCounts.Pending },
+    { label: "Acknowledged", value: "Acknowledged", count: statusCounts.Acknowledged },
+    { label: "Shipped", value: "Shipped", count: statusCounts.Shipped },
+    { label: "Completed", value: "Completed", count: statusCounts.Completed },
+  ]
+
+  const filtered = orders.filter((o) => {
+    const matchesTab = activeTab === "all" || o.status === activeTab
+    const q = search.trim().toLowerCase()
+    const matchesSearch = q === "" || (o.noon_order_id ?? "").toLowerCase().includes(q)
+    return matchesTab && matchesSearch
+  })
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="pt-6"><Skeleton className="h-8 w-20" /></CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardContent className="p-0">
+            <Skeleton className="h-[300px] w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (orders.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight">Orders</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Orders from Noon webhooks
+          </p>
+        </div>
+        <div className="flex min-h-[50vh] items-center justify-center">
+          <Card className="max-w-md text-center">
+            <CardContent className="space-y-4 pt-6">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+                <Database className="size-6 text-muted-foreground" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-lg font-semibold">No orders yet</h3>
+                <p className="text-sm text-muted-foreground">
+                  Orders will populate here automatically as Noon sends webhook
+                  events for new transactions.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
+                <RefreshCw className="size-3.5" />
+                Refresh
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -71,7 +146,7 @@ export function OrdersPage() {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Orders</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {orders.length} total orders · 3 require action
+            {orders.length} total orders · {statusCounts.Pending} pending
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -114,7 +189,12 @@ export function OrdersPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search orders, customers…" className="pl-9 bg-background" />
+          <Input
+            placeholder="Search by order ID…"
+            className="pl-9 bg-background"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
         <div className="flex items-center gap-2">
           <Select defaultValue="all-time">
@@ -142,11 +222,8 @@ export function OrdersPage() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="pl-6 w-20">Order</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead className="hidden md:table-cell">Channel</TableHead>
-                <TableHead className="hidden lg:table-cell text-right">Items</TableHead>
+                <TableHead>Date</TableHead>
                 <TableHead className="text-right">Total</TableHead>
-                <TableHead className="hidden sm:table-cell">Date</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="pr-6 w-10"></TableHead>
               </TableRow>
@@ -155,36 +232,22 @@ export function OrdersPage() {
               {filtered.map((order) => (
                 <TableRow key={order.id} className="hover:bg-muted/30">
                   <TableCell className="pl-6 font-mono text-sm font-medium">
-                    {order.id}
+                    {order.noon_order_id ?? order.id.slice(0, 8)}
                   </TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="text-sm font-medium">{order.customer}</p>
-                      <p className="text-xs text-muted-foreground">{order.email}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                      {order.channel}
-                    </span>
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell text-right text-sm text-muted-foreground tabular-nums">
-                    {order.items}
+                  <TableCell className="text-sm text-muted-foreground">
+                    {order.order_date ? new Date(order.order_date).toLocaleString() : "—"}
                   </TableCell>
                   <TableCell className="text-right font-semibold tabular-nums">
-                    {order.total}
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
-                    {order.date}
+                    {order.total_price != null ? `$${Number(order.total_price).toFixed(2)}` : "—"}
                   </TableCell>
                   <TableCell>
                     <span
                       className={cn(
                         "rounded-full border px-2.5 py-0.5 text-xs font-medium",
-                        STATUS_STYLES[order.status]
+                        STATUS_STYLES[order.status ?? "Pending"] ?? "bg-muted text-muted-foreground border-border"
                       )}
                     >
-                      {order.status}
+                      {order.status ?? "Pending"}
                     </span>
                   </TableCell>
                   <TableCell className="pr-6">

@@ -7,8 +7,8 @@ const corsHeaders = {
 }
 
 const NOON_BASE = "https://noon-api-gateway.noon.partners"
-const NOON_EXPORT_CREATE_URL = `${NOON_BASE}/v1/export/create`
-const NOON_EXPORT_STATUS_URL = `${NOON_BASE}/v1/export/status`
+const NOON_EXPORT_CREATE_URL = `${NOON_BASE}/catalog/v1/export/create`
+const NOON_EXPORT_STATUS_URL = `${NOON_BASE}/catalog/v1/export/status`
 
 // Per the Noon Partner API spec, ALL requests must include a User-Agent header
 // identifying the application. Requests without it may be rejected.
@@ -383,7 +383,8 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "sync") {
-      const exportCode = await createExport()
+      const existingCode = (body as { export_code?: string }).export_code
+      const exportCode = existingCode ?? (await createExport())
       const downloadUrl = await pollExportStatus(exportCode)
       const count = await processExport(downloadUrl)
       return new Response(

@@ -1,14 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import {
-  Plus,
-  Search,
-  Filter,
-  MoreHorizontal,
-  Star,
-  TrendingUp,
-  Package,
-  RefreshCw,
-} from "lucide-react"
+import { Plus, Search, ListFilter as Filter, MoveHorizontal as MoreHorizontal, Package, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -27,18 +18,9 @@ import type { Product } from "@/lib/types"
 type DisplayProduct = {
   id: string
   name: string
-  category: string
   price: string
   stock: number
   status: string
-  rating: number
-  sales: number
-}
-
-const CATEGORY_COLORS: Record<string, string> = {
-  Electronics: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300",
-  Furniture: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300",
-  Accessories: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-300",
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -58,12 +40,9 @@ function toDisplayProduct(row: Product): DisplayProduct {
   return {
     id: row.partner_sku,
     name: row.name ?? row.partner_sku,
-    category: "Electronics",
-    price: row.price != null ? `$${Number(row.price).toFixed(2)}` : "—",
+    price: row.price != null ? `${Number(row.price).toFixed(2)}` : "—",
     stock: row.stock_qty ?? 0,
     status: row.is_active === false ? "Discontinued" : deriveStatus(row.stock_qty ?? 0),
-    rating: 4.5,
-    sales: 0,
   }
 }
 
@@ -151,7 +130,7 @@ export function ProductsPage() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="Search by name, SKU, category…"
+          placeholder="Search by name or SKU…"
           className="pl-9 bg-background"
         />
       </div>
@@ -224,14 +203,6 @@ export function ProductsPage() {
                   <span
                     className={cn(
                       "rounded-full border px-2 py-0.5 text-xs font-medium",
-                      CATEGORY_COLORS[product.category] ?? "bg-muted text-muted-foreground border-border"
-                    )}
-                  >
-                    {product.category}
-                  </span>
-                  <span
-                    className={cn(
-                      "rounded-full border px-2 py-0.5 text-xs font-medium",
                       STATUS_STYLES[product.status]
                     )}
                   >
@@ -240,19 +211,9 @@ export function ProductsPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-lg font-bold">{product.price}</span>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-0.5">
-                      <Star className="size-3 fill-amber-400 text-amber-400" />
-                      {product.rating}
-                    </span>
-                    <span className="flex items-center gap-0.5">
-                      <TrendingUp className="size-3" />
-                      {product.sales.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-                <div className="mt-2 text-xs text-muted-foreground">
-                  {product.stock > 0 ? `${product.stock} in stock` : "No stock"}
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {product.stock > 0 ? `${product.stock} in stock` : "No stock"}
+                  </span>
                 </div>
               </CardContent>
             </Card>
