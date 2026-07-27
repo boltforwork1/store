@@ -95,6 +95,7 @@ async function loginToNoon(jwt: string): Promise<{
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${jwt}`,
     },
     body: {
       token: jwt,
@@ -106,6 +107,7 @@ async function loginToNoon(jwt: string): Promise<{
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${jwt}`,
     },
     body: JSON.stringify({
       token: jwt,
@@ -115,6 +117,7 @@ async function loginToNoon(jwt: string): Promise<{
 
   if (!response.ok) {
     const text = await response.text().catch(() => "")
+    console.error(`[noon-auth] Noon login failed (${response.status}):`, text)
     throw new Error(
       `Noon login failed (${response.status}): ${text || response.statusText}`
     )
