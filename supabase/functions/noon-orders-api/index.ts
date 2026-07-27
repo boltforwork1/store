@@ -9,6 +9,13 @@ const corsHeaders = {
 const NOON_BASE = "https://noon-api-gateway.noon.partners"
 const NOON_ORDERS_LIST_URL = `${NOON_BASE}/fbpi/v1/fbpi-orders/list`
 
+// Strict warehouse code format: alphanumeric, underscores, hyphens, min 5 chars.
+// Noon does not validate this server-side, so we enforce it on both the client
+// and edge function to prevent bogus codes from silently returning empty lists.
+const WAREHOUSE_CODE_REGEX = /^[A-Za-z0-9_-]{5,}$/
+const INVALID_WAREHOUSE_CODE_MESSAGE =
+  "Invalid Warehouse Code. Please enter a valid Noon warehouse code (e.g., W00012345A)."
+
 // Per the Noon Partner API spec, ALL requests must include a User-Agent header
 // identifying the application. Requests without it may be rejected.
 const USER_AGENT = "NexCommerce/1.0.0"
@@ -267,11 +274,19 @@ Deno.serve(async (req: Request) => {
       )
     }
 
+    const trimmedWarehouseCode = parsed.warehouse_code.trim()
+    if (!WAREHOUSE_CODE_REGEX.test(trimmedWarehouseCode)) {
+      return new Response(
+        JSON.stringify({ ok: false, error: INVALID_WAREHOUSE_CODE_MESSAGE }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
     const now = new Date()
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
     const payload: Record<string, unknown> = {
-      warehouse_code: parsed.warehouse_code.trim(),
+      warehouse_code: trimmedWarehouseCode,
       created_after: parsed.created_after ?? thirtyDaysAgo.toISOString(),
       created_before: parsed.created_before ?? now.toISOString(),
     }

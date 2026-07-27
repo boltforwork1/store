@@ -237,6 +237,13 @@ export type NoonOrdersResult = {
   error?: string
 }
 
+// Strict warehouse code format: alphanumeric, underscores, hyphens, min 5 chars.
+// Noon does not validate this server-side, so we enforce it on both the client
+// and edge function to prevent bogus codes from silently returning empty lists.
+export const WAREHOUSE_CODE_REGEX = /^[A-Za-z0-9_-]{5,}$/
+export const INVALID_WAREHOUSE_CODE_MESSAGE =
+  "Invalid Warehouse Code. Please enter a valid Noon warehouse code (e.g., W00012345A)."
+
 /**
  * Fetch live orders from the Noon FBPI orders list endpoint via the
  * `noon-orders-api` edge function. The function persists the fetched orders

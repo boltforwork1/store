@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
-import { fetchNoonOrdersApi } from "@/lib/noon"
+import { fetchNoonOrdersApi, INVALID_WAREHOUSE_CODE_MESSAGE, WAREHOUSE_CODE_REGEX } from "@/lib/noon"
 import { cn } from "@/lib/utils"
 
 type OrderRow = {
@@ -79,6 +79,11 @@ export function OrdersPage() {
     const warehouse = warehouseCode.trim()
     if (!warehouse) {
       toast.error("Warehouse code is required")
+      return
+    }
+
+    if (!WAREHOUSE_CODE_REGEX.test(warehouse)) {
+      toast.error(INVALID_WAREHOUSE_CODE_MESSAGE)
       return
     }
 
