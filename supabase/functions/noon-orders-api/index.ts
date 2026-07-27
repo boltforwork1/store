@@ -113,7 +113,7 @@ async function callNoonWithRetry(
 
     if (retry.status !== 200) {
       throw new Error(
-        `Noon orders call failed after re-auth (${retry.status}): ${JSON.stringify(retry.body)}`
+        `Noon API Error (${retry.status}): ${extractNoonError(retry.body)}`
       )
     }
 
@@ -122,11 +122,38 @@ async function callNoonWithRetry(
 
   if (first.status !== 200) {
     throw new Error(
-      `Noon orders call failed (${first.status}): ${JSON.stringify(first.body)}`
+      `Noon API Error (${first.status}): ${extractNoonError(first.body)}`
     )
   }
 
   return first.body
+}
+
+/**
+ * Extract a human-readable error message from a Noon API error response. Noon
+ * typically returns `{ error: { message: "..." } }` or `{ message: "..." }`, but
+ * may also return a plain string or arbitrary JSON. We surface the most useful
+ * detail so the caller can see exactly what Noon complained about.
+ */
+function extractNoonError(body: unknown): string {
+  if (body === null || body === undefined || body === "") {
+    return "No response body from Noon"
+  }
+
+  if (typeof body === "string") {
+    return body
+  }
+
+  if (typeof body === "object") {
+    const b = body as Record<string, unknown>
+    const err = b.error as Record<string, unknown> | undefined
+    if (err && typeof err.message === "string") return err.message
+    if (typeof b.message === "string") return b.message
+    if (typeof b.error === "string") return b.error
+    if (typeof b.detail === "string") return b.detail
+  }
+
+  return JSON.stringify(body)
 }
 
 function coerceNumber(value: unknown): number {

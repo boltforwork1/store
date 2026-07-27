@@ -89,7 +89,7 @@ export function OrdersPage() {
       const result = await fetchNoonOrdersApi({ warehouse_code: warehouse })
 
       if (!result.ok) {
-        toast.error(result.error ?? "Failed to fetch orders", { id: toastId })
+        toast.error(result.error ?? "Noon API Error: no error details returned", { id: toastId })
         return
       }
 
