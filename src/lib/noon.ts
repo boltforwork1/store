@@ -1,4 +1,5 @@
 export type NoonStockItem = {
+  warehouse_code: string
   partner_sku: string
   qty: number
 }
@@ -58,7 +59,7 @@ async function callNoonFunction(
 }
 
 export function updateNoonStock(items: NoonStockItem[]): Promise<NoonResult> {
-  return callNoonFunction("noon-stock-update", { items })
+  return callNoonFunction("noon-update-stock", { items })
 }
 
 export function updateNoonPrices(items: NoonPriceItem[]): Promise<NoonResult> {

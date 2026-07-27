@@ -1,8 +1,19 @@
 import { useEffect, useState } from "react"
-import { Download, Package2, Warehouse, RefreshCw, Database } from "lucide-react"
+import { Download, Package2, Warehouse, RefreshCw, Database, Pencil, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -12,6 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { supabase } from "@/lib/supabase"
+import { updateNoonStock } from "@/lib/noon"
 import { cn } from "@/lib/utils"
 
 type InventoryRow = {
@@ -32,6 +44,9 @@ function getStockLevel(qty: number) {
 export function InventoryPage() {
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<InventoryRow[]>([])
+  const [updateOpen, setUpdateOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [form, setForm] = useState({ warehouseCode: "", partnerSku: "", qty: "" })
 
   const load = async () => {
     setLoading(true)
@@ -55,6 +70,68 @@ export function InventoryPage() {
   const inStock = items.filter((i) => (i.stock_qty ?? 0) > 0).length
   const outOfStock = items.filter((i) => (i.stock_qty ?? 0) === 0).length
   const totalUnits = items.reduce((sum, i) => sum + (i.stock_qty ?? 0), 0)
+
+  function openUpdateForm(prefill?: Partial<InventoryRow>) {
+    setForm({
+      warehouseCode: "",
+      partnerSku: prefill?.partner_sku ?? "",
+      qty: prefill?.stock_qty != null ? String(prefill.stock_qty) : "",
+    })
+    setUpdateOpen(true)
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+
+    const warehouseCode = form.warehouseCode.trim()
+    const partnerSku = form.partnerSku.trim()
+    const qtyNum = Number(form.qty)
+
+    if (!warehouseCode) {
+      toast.error("Warehouse code is required")
+      return
+    }
+    if (!partnerSku) {
+      toast.error("Partner SKU is required")
+      return
+    }
+    if (!Number.isFinite(qtyNum) || qtyNum < 0) {
+      toast.error("Quantity must be a non-negative number")
+      return
+    }
+
+    setSubmitting(true)
+    const toastId = toast.loading("Updating stock on Noon…")
+
+    try {
+      const result = await updateNoonStock([
+        { warehouse_code: warehouseCode, partner_sku: partnerSku, qty: qtyNum },
+      ])
+
+      // Noon returns an `items` array; each item has a `status.status_code`.
+      const data = (result.data ?? {}) as { items?: Array<{ status?: { status_code?: string; message?: string } }> }
+      const responseItems = data.items ?? []
+      const allOk = responseItems.length > 0 && responseItems.every(
+        (it) => it.status?.status_code === "OK"
+      )
+
+      if (allOk) {
+        toast.success(`Stock updated for ${partnerSku}`, { id: toastId })
+        setUpdateOpen(false)
+        await load()
+      } else {
+        // Partial or per-item failure: surface details from the first non-OK item.
+        const failed = responseItems.find((it) => it.status?.status_code !== "OK")
+        const detail = failed?.status?.message ?? "One or more items were not accepted by Noon"
+        toast.error(detail, { id: toastId })
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unexpected error"
+      toast.error(message, { id: toastId })
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -120,8 +197,16 @@ export function InventoryPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
+            <RefreshCw className="size-3.5" />
+            Refresh
+          </Button>
+          <Button variant="outline" size="sm" className="gap-1.5">
             <Download className="size-3.5" />
             Export
+          </Button>
+          <Button size="sm" className="gap-1.5" onClick={() => openUpdateForm()}>
+            <Pencil className="size-3.5" />
+            Update Stock
           </Button>
         </div>
       </div>
@@ -209,6 +294,7 @@ export function InventoryPage() {
                 <TableHead className="text-right">Qty</TableHead>
                 <TableHead className="text-right">Price</TableHead>
                 <TableHead className="pr-6">Status</TableHead>
+                <TableHead className="pr-6 text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -232,6 +318,17 @@ export function InventoryPage() {
                         {level.label}
                       </span>
                     </TableCell>
+                    <TableCell className="pr-6 text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1.5 text-xs"
+                        onClick={() => openUpdateForm(item)}
+                      >
+                        <Pencil className="size-3" />
+                        Update
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 )
               })}
@@ -239,6 +336,76 @@ export function InventoryPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Update Stock Dialog */}
+      <Dialog open={updateOpen} onOpenChange={setUpdateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Update Stock</DialogTitle>
+            <DialogDescription>
+              Push a new stock level to Noon for a single SKU and warehouse.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="warehouse-code">Warehouse code</Label>
+              <Input
+                id="warehouse-code"
+                placeholder="e.g. DXB-W01"
+                value={form.warehouseCode}
+                onChange={(e) => setForm((f) => ({ ...f, warehouseCode: e.target.value }))}
+                disabled={submitting}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="partner-sku">Partner SKU</Label>
+              <Input
+                id="partner-sku"
+                placeholder="e.g. SKU-12345"
+                value={form.partnerSku}
+                onChange={(e) => setForm((f) => ({ ...f, partnerSku: e.target.value }))}
+                disabled={submitting}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="qty">Quantity</Label>
+              <Input
+                id="qty"
+                type="number"
+                min={0}
+                step={1}
+                placeholder="e.g. 50"
+                value={form.qty}
+                onChange={(e) => setForm((f) => ({ ...f, qty: e.target.value }))}
+                disabled={submitting}
+                required
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setUpdateOpen(false)}
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting} className="gap-1.5">
+                {submitting ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Updating…
+                  </>
+                ) : (
+                  "Update Stock"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
