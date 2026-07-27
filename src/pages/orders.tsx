@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Search, ListFilter as Filter, Download, Eye, MoveHorizontal as MoreHorizontal, ChevronLeft, ChevronRight, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse } from "lucide-react"
+import { Search, ListFilter as Filter, Download, Eye, MoveHorizontal as MoreHorizontal, ChevronLeft, ChevronRight, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, FlaskConical } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
-import { fetchNoonOrdersApi, INVALID_WAREHOUSE_CODE_MESSAGE, WAREHOUSE_CODE_REGEX } from "@/lib/noon"
+import { fetchNoonOrdersApi, createNoonSandboxOrder, INVALID_WAREHOUSE_CODE_MESSAGE, WAREHOUSE_CODE_REGEX } from "@/lib/noon"
 import { cn } from "@/lib/utils"
 
 type OrderRow = {
@@ -48,6 +48,7 @@ const STATUS_STYLES: Record<string, string> = {
 export function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
+  const [creatingOrder, setCreatingOrder] = useState(false)
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [activeTab, setActiveTab] = useState("all")
   const [search, setSearch] = useState("")
@@ -72,6 +73,39 @@ export function OrdersPage() {
   useEffect(() => {
     load()
   }, [])
+
+  async function handleCreateTestOrder() {
+    const warehouse = warehouseCode.trim()
+    if (!warehouse) {
+      toast.error("Warehouse code is required")
+      return
+    }
+
+    if (!WAREHOUSE_CODE_REGEX.test(warehouse)) {
+      toast.error(INVALID_WAREHOUSE_CODE_MESSAGE)
+      return
+    }
+
+    setCreatingOrder(true)
+    const toastId = toast.loading("Creating sandbox test order…")
+
+    try {
+      const result = await createNoonSandboxOrder({ warehouse_code: warehouse })
+
+      if (!result.ok || !result.fbpi_order_nr) {
+        toast.error(result.error || "Failed to create sandbox order", { id: toastId })
+        return
+      }
+
+      toast.success(`Sandbox order created: ${result.fbpi_order_nr}. Click Sync Orders to fetch it!`, {
+        id: toastId,
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error), { id: toastId })
+    } finally {
+      setCreatingOrder(false)
+    }
+  }
 
   async function handleFetchOrders(e: React.FormEvent) {
     e.preventDefault()
@@ -262,14 +296,30 @@ export function OrdersPage() {
                 disabled={fetching}
               />
             </div>
-            <Button type="submit" disabled={fetching} className="gap-1.5 sm:w-auto">
-              {fetching ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="size-3.5" />
-              )}
-              {fetching ? "Fetching…" : "Sync Orders"}
-            </Button>
+            <div className="flex gap-2 sm:w-auto">
+              <Button type="submit" disabled={fetching || creatingOrder} className="gap-1.5 sm:w-auto">
+                {fetching ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-3.5" />
+                )}
+                {fetching ? "Fetching…" : "Sync Orders"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCreateTestOrder}
+                disabled={fetching || creatingOrder}
+                className="gap-1.5 sm:w-auto"
+              >
+                {creatingOrder ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <FlaskConical className="size-3.5" />
+                )}
+                {creatingOrder ? "Creating…" : "Create Test Order"}
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>

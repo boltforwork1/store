@@ -259,3 +259,17 @@ export async function fetchNoonOrdersApi(params: {
   const data = (result.data ?? {}) as { count?: number; orders?: NoonFetchedOrder[] }
   return { ok: result.ok, count: data.count, orders: data.orders, error: result.error }
 }
+
+export type NoonSandboxOrderResult = {
+  ok: boolean
+  fbpi_order_nr?: string
+  error?: string
+}
+
+export async function createNoonSandboxOrder(params: {
+  warehouse_code: string
+}): Promise<NoonSandboxOrderResult> {
+  const result = await callNoonFunction("noon-create-sandbox-order", params)
+  const data = (result.data ?? {}) as { fbpi_order_nr?: string }
+  return { ok: result.ok, fbpi_order_nr: data.fbpi_order_nr, error: result.error }
+}
