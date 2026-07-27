@@ -89,7 +89,7 @@ export function OrdersPage() {
       const result = await fetchNoonOrdersApi({ warehouse_code: warehouse })
 
       if (!result.ok) {
-        toast.error(result.error ?? "Noon API Error: no error details returned", { id: toastId })
+        toast.error(result.error || "Noon API request failed", { id: toastId })
         return
       }
 
@@ -98,9 +98,8 @@ export function OrdersPage() {
         id: toastId,
       })
       await load()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unexpected error"
-      toast.error(message, { id: toastId })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error), { id: toastId })
     } finally {
       setFetching(false)
     }

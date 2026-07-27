@@ -248,5 +248,6 @@ export async function fetchNoonOrdersApi(params: {
   created_before?: string
 }): Promise<NoonOrdersResult> {
   const result = await callNoonFunction("noon-orders-api", params)
-  return (result.data ?? {}) as NoonOrdersResult
+  const data = (result.data ?? {}) as { count?: number; orders?: NoonFetchedOrder[] }
+  return { ok: result.ok, count: data.count, orders: data.orders }
 }

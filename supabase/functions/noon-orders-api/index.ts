@@ -75,7 +75,7 @@ async function getSessionCookie(force = false): Promise<string> {
 async function callNoonOrders(
   cookie: string,
   payload: Record<string, unknown>
-): Promise<{ status: number; statusText: string; body: unknown }> {
+): Promise<{ status: number; statusText: string; text: string; body: unknown }> {
   const response = await fetch(NOON_ORDERS_LIST_URL, {
     method: "POST",
     headers: {
@@ -86,15 +86,15 @@ async function callNoonOrders(
     body: JSON.stringify(payload),
   })
 
-  const text = await response.text()
+  const textBody = await response.text()
   let body: unknown
   try {
-    body = JSON.parse(text)
+    body = JSON.parse(textBody)
   } catch {
-    body = text
+    body = textBody
   }
 
-  return { status: response.status, statusText: response.statusText, body }
+  return { status: response.status, statusText: response.statusText, text: textBody, body }
 }
 
 /**
@@ -113,7 +113,7 @@ async function callNoonWithRetry(
 
     if (retry.status !== 200) {
       throw new Error(
-        `Noon API Error [${retry.status} ${retry.statusText}]: ${extractNoonError(retry.body) || "No body"}`
+        `Noon API Error [${retry.status} ${retry.statusText}]: ${retry.text || "Empty Body"}`
       )
     }
 
@@ -122,38 +122,11 @@ async function callNoonWithRetry(
 
   if (first.status !== 200) {
     throw new Error(
-      `Noon API Error [${first.status} ${first.statusText}]: ${extractNoonError(first.body) || "No body"}`
+      `Noon API Error [${first.status} ${first.statusText}]: ${first.text || "Empty Body"}`
     )
 }
 
   return first.body
-}
-
-/**
- * Extract a human-readable error message from a Noon API error response. Noon
- * typically returns `{ error: { message: "..." } }` or `{ message: "..." }`, but
- * may also return a plain string or arbitrary JSON. We surface the most useful
- * detail so the caller can see exactly what Noon complained about.
- */
-function extractNoonError(body: unknown): string {
-  if (body === null || body === undefined || body === "") {
-    return "No response body from Noon"
-  }
-
-  if (typeof body === "string") {
-    return body
-  }
-
-  if (typeof body === "object") {
-    const b = body as Record<string, unknown>
-    const err = b.error as Record<string, unknown> | undefined
-    if (err && typeof err.message === "string") return err.message
-    if (typeof b.message === "string") return b.message
-    if (typeof b.error === "string") return b.error
-    if (typeof b.detail === "string") return b.detail
-  }
-
-  return JSON.stringify(body)
 }
 
 function coerceNumber(value: unknown): number {
