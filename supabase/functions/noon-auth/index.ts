@@ -92,7 +92,10 @@ async function loginToNoon(jwt: string): Promise<{
 
   const response = await fetch(NOON_LOGIN_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${jwt}`,
+    },
     body: JSON.stringify({
       token: jwt,
       default_project_code: projectCode,
