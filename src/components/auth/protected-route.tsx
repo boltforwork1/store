@@ -1,4 +1,4 @@
-import { Navigate } from "react-router-dom"
+import { Navigate, Outlet } from "react-router-dom"
 import { useAuth } from "@/hooks/use-auth"
 import { Spinner } from "@/components/ui/spinner"
 
@@ -17,5 +17,5 @@ export function ProtectedRoute() {
     return <Navigate to="/login" replace />
   }
 
-  return null
+  return <Outlet />
 }
