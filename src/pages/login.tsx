@@ -9,8 +9,7 @@ import { toast } from "sonner"
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const { signIn, signUp, session, loading: authLoading } = useAuth()
-  const [mode, setMode] = useState<"signin" | "signup">("signin")
+  const { signIn, session, loading: authLoading } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -22,14 +21,10 @@ export function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
-    const fn = mode === "signin" ? signIn : signUp
-    const { error } = await fn(email, password)
+    const { error } = await signIn(email, password)
     setLoading(false)
     if (error) {
       toast.error(error)
-    } else if (mode === "signup") {
-      toast.success("Account created. You can now sign in.")
-      setMode("signin")
     } else {
       navigate("/overview")
     }
@@ -39,11 +34,9 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>{mode === "signin" ? "Sign in" : "Create account"}</CardTitle>
+          <CardTitle>Sign in</CardTitle>
           <CardDescription>
-            {mode === "signin"
-              ? "Enter your credentials to access the dashboard"
-              : "Create an account to get started"}
+            Enter your credentials to access the dashboard
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -65,21 +58,12 @@ export function LoginPage() {
                 id="password"
                 type="password"
                 required
-                minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Please wait…" : mode === "signin" ? "Sign in" : "Sign up"}
-            </Button>
-            <Button
-              type="button"
-              variant="link"
-              className="w-full text-sm"
-              onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
-            >
-              {mode === "signin" ? "Need an account? Sign up" : "Already have an account? Sign in"}
+              {loading ? "Please wait…" : "Sign in"}
             </Button>
           </form>
         </CardContent>
