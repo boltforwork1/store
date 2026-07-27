@@ -95,7 +95,6 @@ async function loginToNoon(jwt: string): Promise<{
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: jwt,
     },
     body: {
       token: jwt,
@@ -107,7 +106,6 @@ async function loginToNoon(jwt: string): Promise<{
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: jwt,
     },
     body: JSON.stringify({
       token: jwt,
