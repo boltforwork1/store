@@ -1,30 +1,11 @@
-import {
-  Bell,
-  Building2,
-  CreditCard,
-  Globe,
-  Lock,
-  Palette,
-  Save,
-  Shield,
-  Users,
-} from "lucide-react"
+import { Building2, Save } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export function SettingsPage() {
   return (
@@ -33,277 +14,62 @@ export function SettingsPage() {
       <div>
         <h2 className="text-xl font-semibold tracking-tight">Settings</h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Manage your account, workspace, and preferences
+          Manage your company profile — these details map to your Noon Partner account once the integration is connected.
         </p>
       </div>
 
-      <Tabs defaultValue="general">
-        <TabsList className="w-full justify-start border-b rounded-none bg-transparent p-0 h-auto">
-          {[
-            { value: "general", label: "General", icon: Building2 },
-            { value: "team", label: "Team", icon: Users },
-            { value: "billing", label: "Billing", icon: CreditCard },
-            { value: "notifications", label: "Notifications", icon: Bell },
-            { value: "security", label: "Security", icon: Shield },
-          ].map((tab) => (
-            <TabsTrigger
-              key={tab.value}
-              value={tab.value}
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 pb-3 gap-2 text-sm font-medium text-muted-foreground data-[state=active]:text-foreground"
-            >
-              <tab.icon className="size-3.5" />
-              {tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        {/* General Tab */}
-        <TabsContent value="general" className="mt-6 space-y-6">
-          {/* Company Profile */}
-          <Card>
-            <CardHeader>
+      {/* Company Profile */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+              <Building2 className="size-4 text-muted-foreground" />
+            </div>
+            <div>
               <CardTitle className="text-base">Company Profile</CardTitle>
               <CardDescription>Update your company's public information</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="flex items-center gap-4">
-                <Avatar className="size-16">
-                  <AvatarFallback className="text-lg font-bold bg-muted text-muted-foreground rounded-xl">
-                    —
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex flex-col gap-1.5">
-                  <Button variant="outline" size="sm">Change logo</Button>
-                  <p className="text-xs text-muted-foreground">PNG, JPG or SVG · max 2MB</p>
-                </div>
-              </div>
-              <Separator />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="company-name">Company name</Label>
-                  <Input id="company-name" placeholder="Your company name" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="industry">Industry</Label>
-                  <Select>
-                    <SelectTrigger id="industry">
-                      <SelectValue placeholder="Select industry" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ecommerce">E-Commerce</SelectItem>
-                      <SelectItem value="retail">Retail</SelectItem>
-                      <SelectItem value="wholesale">Wholesale</SelectItem>
-                      <SelectItem value="manufacturing">Manufacturing</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="website">Website</Label>
-                  <Input id="website" placeholder="https://" type="url" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="timezone">Timezone</Label>
-                  <Select>
-                    <SelectTrigger id="timezone">
-                      <SelectValue placeholder="Select timezone" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="est">Eastern Time (ET)</SelectItem>
-                      <SelectItem value="pst">Pacific Time (PT)</SelectItem>
-                      <SelectItem value="cst">Central Time (CT)</SelectItem>
-                      <SelectItem value="utc">UTC</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="col-span-full space-y-1.5">
-                  <Label htmlFor="bio">Description</Label>
-                  <Textarea
-                    id="bio"
-                    rows={3}
-                    placeholder="Briefly describe your business — this will be used to map your Noon Partner profile."
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button size="sm" className="gap-1.5">
-                  <Save className="size-3.5" />
-                  Save changes
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Appearance */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Appearance</CardTitle>
-              <CardDescription>Customize the look and feel of your dashboard</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
-                    <Palette className="size-4 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Dark mode</p>
-                    <p className="text-xs text-muted-foreground">Switch between light and dark themes</p>
-                  </div>
-                </div>
-                <Switch />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
-                    <Globe className="size-4 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Language</p>
-                    <p className="text-xs text-muted-foreground">Select your preferred language</p>
-                  </div>
-                </div>
-                <Select>
-                  <SelectTrigger className="w-32 h-8">
-                    <SelectValue placeholder="Language" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="es">Español</SelectItem>
-                    <SelectItem value="fr">Français</SelectItem>
-                    <SelectItem value="de">Deutsch</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Team Tab */}
-        <TabsContent value="team" className="mt-6 space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-base">Team Members</CardTitle>
-                  <CardDescription>Manage access and roles for your team</CardDescription>
-                </div>
-                <Button size="sm">Invite member</Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                  <Users className="size-5 text-muted-foreground" />
-                </div>
-                <p className="mt-4 text-sm font-medium">No team members yet</p>
-                <p className="mt-1 text-xs text-muted-foreground max-w-sm">
-                  Invite teammates to collaborate on managing your Noon catalog and orders.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Billing Tab */}
-        <TabsContent value="billing" className="mt-6 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Current Plan</CardTitle>
-              <CardDescription>Your subscription and usage details</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                  <CreditCard className="size-5 text-muted-foreground" />
-                </div>
-                <p className="mt-4 text-sm font-medium">No active subscription</p>
-                <p className="mt-1 text-xs text-muted-foreground max-w-sm">
-                  Subscribe to a plan to unlock full access to catalog sync, order management, and reporting features.
-                </p>
-                <Button size="sm" className="mt-4">View plans</Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Notifications Tab */}
-        <TabsContent value="notifications" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Notification Preferences</CardTitle>
-              <CardDescription>Choose what you want to be notified about</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-0 p-0">
-              {[
-                { title: "New orders", description: "Get notified when a new order comes in", enabled: true },
-                { title: "Low stock alerts", description: "Alert when a product drops below threshold", enabled: true },
-                { title: "Payment confirmations", description: "Notify on successful payments", enabled: true },
-                { title: "Shipment updates", description: "Updates on outbound shipments", enabled: true },
-                { title: "Weekly digest", description: "A weekly summary of your store performance", enabled: true },
-                { title: "Security alerts", description: "Important account security notifications", enabled: true },
-              ].map((item, i, arr) => (
-                <div
-                  key={item.title}
-                  className={`flex items-center justify-between px-6 py-4 ${i < arr.length - 1 ? "border-b" : ""}`}
-                >
-                  <div>
-                    <p className="text-sm font-medium">{item.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
-                  </div>
-                  <Switch defaultChecked={item.enabled} />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Security Tab */}
-        <TabsContent value="security" className="mt-6 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Password</CardTitle>
-              <CardDescription>Update your account password</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-1.5 max-w-sm">
-                <Label htmlFor="current-pw">Current password</Label>
-                <Input id="current-pw" type="password" />
-              </div>
-              <div className="space-y-1.5 max-w-sm">
-                <Label htmlFor="new-pw">New password</Label>
-                <Input id="new-pw" type="password" />
-              </div>
-              <div className="space-y-1.5 max-w-sm">
-                <Label htmlFor="confirm-pw">Confirm new password</Label>
-                <Input id="confirm-pw" type="password" />
-              </div>
-              <Button size="sm" className="gap-1.5">
-                <Lock className="size-3.5" />
-                Update password
-              </Button>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Two-Factor Authentication</CardTitle>
-              <CardDescription>Add an extra layer of security to your account</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Shield className="size-5 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">Authenticator app</p>
-                    <p className="text-xs text-muted-foreground">Use an app like Google Authenticator</p>
-                  </div>
-                </div>
-                <Button variant="outline" size="sm">Enable</Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="flex items-center gap-4">
+            <Avatar className="size-16">
+              <AvatarFallback className="text-lg font-bold bg-muted text-muted-foreground rounded-xl">
+                —
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col gap-1.5">
+              <Button variant="outline" size="sm">Change logo</Button>
+              <p className="text-xs text-muted-foreground">PNG, JPG or SVG · max 2MB</p>
+            </div>
+          </div>
+          <Separator />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="company-name">Company name</Label>
+              <Input id="company-name" placeholder="Your company name" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="website">Website</Label>
+              <Input id="website" placeholder="https://" type="url" />
+            </div>
+            <div className="col-span-full space-y-1.5">
+              <Label htmlFor="bio">Description</Label>
+              <Textarea
+                id="bio"
+                rows={3}
+                placeholder="Briefly describe your business — this will be used to map your Noon Partner profile."
+              />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button size="sm" className="gap-1.5">
+              <Save className="size-3.5" />
+              Save changes
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
