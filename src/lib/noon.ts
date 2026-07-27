@@ -221,40 +221,32 @@ export async function importCatalogFromFile(
   }
 }
 
-export type NoonOrder = {
-  id: string
+export type NoonFetchedOrder = {
   noon_order_id: string
-  order_date: string
+  order_date: string | null
   total_price: number
+  customer_country_code: string | null
   status: string
 }
 
 export type NoonOrdersResult = {
   ok: boolean
-  status: number
-  data: unknown
+  count?: number
+  orders?: NoonFetchedOrder[]
+  error?: string
 }
 
-// Noon FBPI pushes orders via webhooks — there is no polling GET endpoint.
-// The "Sync Orders" button in the UI re-reads orders from our own database
-// (populated by the noon-webhook-receiver edge function) instead of calling
-// Noon. fetchNoonOrders is retained only as a local DB read for callers that
-// still import it.
-export async function fetchNoonOrders(): Promise<NoonOrder[]> {
-  const { data, error } = await supabase
-    .from("orders")
-    .select("id, noon_order_id, order_date, total_price, status")
-    .order("order_date", { ascending: false })
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  return (data ?? []).map((row) => ({
-    id: String(row.id),
-    noon_order_id: String(row.noon_order_id),
-    order_date: String(row.order_date),
-    total_price: Number(row.total_price),
-    status: row.status ?? "Pending",
-  }))
+/**
+ * Fetch live orders from the Noon FBPI orders list endpoint via the
+ * `noon-orders-api` edge function. The function persists the fetched orders
+ * into the `orders` table (upserted on `noon_order_id`) and returns the
+ * normalized rows so the UI can update immediately.
+ */
+export async function fetchNoonOrdersApi(params: {
+  warehouse_code: string
+  created_after?: string
+  created_before?: string
+}): Promise<NoonOrdersResult> {
+  const result = await callNoonFunction("noon-orders-api", params)
+  return (result.data ?? {}) as NoonOrdersResult
 }

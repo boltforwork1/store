@@ -81,10 +81,10 @@ export function OverviewPage() {
 
     const [productsRes, ordersRes, recentRes] = await Promise.all([
       supabase.from("products").select("id, name, price, stock_qty, is_active"),
-      supabase.from("orders").select("id, noon_order_id, total_price, status, order_date"),
+      supabase.from("orders").select("id, noon_order_id, total_price, status, order_date, customer_country_code"),
       supabase
         .from("orders")
-        .select("id, noon_order_id, total_price, status, order_date")
+        .select("id, noon_order_id, total_price, status, order_date, customer_country_code")
         .order("order_date", { ascending: false })
         .limit(5),
     ])
@@ -111,7 +111,7 @@ export function OverviewPage() {
         change: null,
         trend: null,
         icon: ShoppingCart,
-        description: "from Noon webhooks",
+        description: "from synced FBPI orders",
       },
       {
         title: "Active Products",
