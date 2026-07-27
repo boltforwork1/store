@@ -156,12 +156,17 @@ function mapRow(row: Record<string, unknown>): CatalogImportRow | null {
   const sku = pickField(row, "partner_sku")
   if (!sku) return null
 
+  const partnerSku = String(sku).trim()
+  const rawName = pickField(row, "name") as string | undefined
+  const rawPrice = coerceNumber(pickField(row, "price"))
+  const rawStock = coerceNumber(pickField(row, "stock_qty"))
+
   return {
-    partner_sku: String(sku).trim(),
-    name: (pickField(row, "name") as string) ?? null,
-    price: coerceNumber(pickField(row, "price")),
+    partner_sku: partnerSku,
+    name: rawName && rawName !== "" ? rawName : `Product ${partnerSku}`,
+    price: rawPrice ?? 0,
     msrp: coerceNumber(pickField(row, "msrp")),
-    stock_qty: coerceNumber(pickField(row, "stock_qty")),
+    stock_qty: rawStock ?? 0,
     delivery_mode: (pickField(row, "delivery_mode") as string) ?? null,
     is_active: coerceBool(pickField(row, "is_active")),
   }
