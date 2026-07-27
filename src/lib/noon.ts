@@ -93,80 +93,125 @@ export function printNoonLabel(orderId: string): Promise<NoonResult> {
   return callNoonFunction("noon-print-label", { order_id: orderId })
 }
 
-export type SyncStage = "initializing" | "waiting" | "downloading" | "syncing" | "done"
+import Papa from "papaparse"
+import { supabase } from "@/lib/supabase"
 
-export type SyncProgress = {
-  stage: SyncStage
-  message: string
-  exportCode?: string
-  upserted?: number
+export type CatalogImportRow = {
+  partner_sku: string
+  name: string | null
+  price: number | null
+  msrp: number | null
+  stock_qty: number | null
+  delivery_mode: string | null
+  is_active: boolean | null
 }
 
-export type SyncResult = {
+export type CatalogImportResult = {
   ok: boolean
-  exportCode?: string
   upserted?: number
+  total?: number
+  skipped?: number
   error?: string
 }
 
+const FIELD_ALIASES: Record<keyof CatalogImportRow, string[]> = {
+  partner_sku: ["partner_sku", "partner sku", "sku", "Partner SKU", "SKU"],
+  name: ["name", "title", "product_name", "product name", "Title", "Name"],
+  price: ["price", "selling_price", "selling price", "Price"],
+  msrp: ["msrp", "retail_price", "retail price", "MSRP"],
+  stock_qty: ["stock_qty", "stock", "qty", "quantity", "Stock"],
+  delivery_mode: ["delivery_mode", "delivery mode", "Delivery Mode"],
+  is_active: ["is_active", "active", "status", "Active"],
+}
+
+function pickField(
+  row: Record<string, unknown>,
+  field: keyof CatalogImportRow
+): unknown {
+  const aliases = FIELD_ALIASES[field]
+  for (const alias of aliases) {
+    if (alias in row && row[alias] !== undefined && row[alias] !== "") {
+      return row[alias]
+    }
+  }
+  return undefined
+}
+
+function coerceNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null
+  const n = Number(value)
+  return isNaN(n) ? null : n
+}
+
+function coerceBool(value: unknown): boolean | null {
+  if (value === null || value === undefined || value === "") return null
+  if (typeof value === "boolean") return value
+  const s = String(value).toLowerCase()
+  if (["true", "1", "yes", "active", "y"].includes(s)) return true
+  if (["false", "0", "no", "inactive", "n"].includes(s)) return false
+  return null
+}
+
+function mapRow(row: Record<string, unknown>): CatalogImportRow | null {
+  const sku = pickField(row, "partner_sku")
+  if (!sku) return null
+
+  return {
+    partner_sku: String(sku).trim(),
+    name: (pickField(row, "name") as string) ?? null,
+    price: coerceNumber(pickField(row, "price")),
+    msrp: coerceNumber(pickField(row, "msrp")),
+    stock_qty: coerceNumber(pickField(row, "stock_qty")),
+    delivery_mode: (pickField(row, "delivery_mode") as string) ?? null,
+    is_active: coerceBool(pickField(row, "is_active")),
+  }
+}
+
 /**
- * Run the full Noon catalog sync by driving the noon-sync-catalog edge
- * function. The `onProgress` callback receives stage updates so the UI can
- * show a descriptive loading state at each step.
+ * Parse a CSV/Excel-derived file (as a File object) and upsert the products
+ * into the Supabase products table. Noon does not expose a public bulk catalog
+ * export API, so users export a CSV from the Noon Partner Portal and upload it
+ * here. Returns counts of upserted, total parsed, and skipped rows.
  */
-export async function syncNoonCatalog(
-  onProgress?: (progress: SyncProgress) => void
-): Promise<SyncResult> {
-  const report = (progress: SyncProgress) => onProgress?.(progress)
-
+export async function importCatalogFromFile(
+  file: File
+): Promise<CatalogImportResult> {
   try {
-    report({ stage: "initializing", message: "Initializing export…" })
+    const text = await file.text()
+    const parsed = Papa.parse<Record<string, unknown>>(text, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (h) => h.trim(),
+    })
 
-    const createResult = (await callNoonFunction("noon-sync-catalog", {
-      action: "create",
-    })) as { ok: boolean; export_code?: string; error?: string }
+    const rows = (parsed.data ?? [])
+      .map(mapRow)
+      .filter((r): r is CatalogImportRow => r !== null)
 
-    if (!createResult.ok || !createResult.export_code) {
-      throw new Error(createResult.error ?? "Failed to create Noon export")
+    if (rows.length === 0) {
+      return {
+        ok: false,
+        error:
+          "No valid product rows found. Ensure the file has a partner_sku/SKU column.",
+      }
     }
 
-    const exportCode = createResult.export_code
+    const { error } = await supabase
+      .from("products")
+      .upsert(rows, { onConflict: "partner_sku" })
 
-    report({
-      stage: "waiting",
-      message: "Waiting for report…",
-      exportCode,
-    })
-
-    const statusResult = (await callNoonFunction("noon-sync-catalog", {
-      action: "sync",
-      export_code: exportCode,
-    })) as { ok: boolean; upserted?: number; error?: string }
-
-    if (!statusResult.ok) {
-      throw new Error(statusResult.error ?? "Noon sync failed")
+    if (error) {
+      return { ok: false, error: error.message }
     }
-
-    report({
-      stage: "syncing",
-      message: "Syncing products…",
-      exportCode,
-    })
-
-    report({
-      stage: "done",
-      message: `Synced ${statusResult.upserted ?? 0} products`,
-      exportCode,
-      upserted: statusResult.upserted,
-    })
 
     return {
       ok: true,
-      exportCode,
-      upserted: statusResult.upserted,
+      upserted: rows.length,
+      total: parsed.data.length,
+      skipped: parsed.data.length - rows.length,
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown sync error"
+    const message = err instanceof Error ? err.message : "Failed to parse file"
     return { ok: false, error: message }
   }
 }
@@ -190,8 +235,6 @@ export type NoonOrdersResult = {
 // (populated by the noon-webhook-receiver edge function) instead of calling
 // Noon. fetchNoonOrders is retained only as a local DB read for callers that
 // still import it.
-import { supabase } from "@/lib/supabase"
-
 export async function fetchNoonOrders(): Promise<NoonOrder[]> {
   const { data, error } = await supabase
     .from("orders")

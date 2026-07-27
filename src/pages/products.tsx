@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react"
-import { Plus, Search, ListFilter as Filter, MoveHorizontal as MoreHorizontal, Package, RefreshCw } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Plus, Search, ListFilter as Filter, MoveHorizontal as MoreHorizontal, Package, Upload, FileSpreadsheet, Loader as Loader2, X } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { supabase } from "@/lib/supabase"
-import { syncNoonCatalog, type SyncStage } from "@/lib/noon"
+import { importCatalogFromFile } from "@/lib/noon"
 import type { Product } from "@/lib/types"
 
 type DisplayProduct = {
@@ -49,8 +49,10 @@ function toDisplayProduct(row: Product): DisplayProduct {
 export function ProductsPage() {
   const [products, setProducts] = useState<DisplayProduct[]>([])
   const [loading, setLoading] = useState(true)
-  const [syncStage, setSyncStage] = useState<SyncStage | null>(null)
-  const [syncMessage, setSyncMessage] = useState("")
+  const [importing, setImporting] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const [search, setSearch] = useState("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadProducts = useCallback(async () => {
     setLoading(true)
@@ -72,27 +74,60 @@ export function ProductsPage() {
     loadProducts()
   }, [loadProducts])
 
-  async function handleSync() {
-    setSyncStage("initializing")
-    setSyncMessage("Initializing export…")
+  async function handleFile(file: File) {
+    if (!file) return
 
-    const result = await syncNoonCatalog((progress) => {
-      setSyncStage(progress.stage)
-      setSyncMessage(progress.message)
-    })
-
-    if (result.ok) {
-      toast.success(`Synced ${result.upserted ?? 0} products from Noon`)
-      await loadProducts()
-    } else {
-      toast.error(result.error ?? "Sync failed")
+    const allowed = [".csv", ".txt"]
+    const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase()
+    if (!allowed.includes(ext)) {
+      toast.error("Please upload a CSV file exported from the Noon Partner Portal.")
+      return
     }
 
-    setSyncStage(null)
-    setSyncMessage("")
+    setImporting(true)
+    const toastId = toast.loading("Parsing catalog file…")
+
+    const result = await importCatalogFromFile(file)
+
+    if (result.ok) {
+      toast.success(
+        `Imported ${result.upserted ?? 0} products${result.skipped ? ` (${result.skipped} rows skipped)` : ""}`,
+        { id: toastId }
+      )
+      await loadProducts()
+    } else {
+      toast.error(result.error ?? "Import failed", { id: toastId })
+    }
+
+    setImporting(false)
+    if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  const isSyncing = syncStage !== null && syncStage !== "done"
+  function onDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    setDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) handleFile(file)
+  }
+
+  function onDragOver(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    setDragging(true)
+  }
+
+  function onDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    setDragging(false)
+  }
+
+  const filtered = products.filter((p) => {
+    const q = search.trim().toLowerCase()
+    if (q === "") return true
+    return (
+      p.name.toLowerCase().includes(q) ||
+      p.id.toLowerCase().includes(q)
+    )
+  })
 
   return (
     <div className="space-y-6">
@@ -113,11 +148,15 @@ export function ProductsPage() {
             variant="outline"
             size="sm"
             className="gap-1.5"
-            onClick={handleSync}
-            disabled={isSyncing}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
           >
-            <RefreshCw className={cn("size-3.5", isSyncing && "animate-spin")} />
-            {isSyncing ? syncMessage : "Sync with Noon API"}
+            {importing ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Upload className="size-3.5" />
+            )}
+            {importing ? "Importing…" : "Import CSV"}
           </Button>
           <Button size="sm" className="gap-1.5">
             <Plus className="size-3.5" />
@@ -126,13 +165,102 @@ export function ProductsPage() {
         </div>
       </div>
 
+      {/* Hidden file input for programmatic clicks */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,.txt"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) handleFile(file)
+        }}
+      />
+
+      {/* Drag-and-drop import zone */}
+      <Card
+        className={cn(
+          "border-2 border-dashed transition-colors",
+          dragging
+            ? "border-primary bg-primary/5"
+            : "border-border bg-muted/20 hover:bg-muted/30"
+        )}
+      >
+        <div
+          onDrop={onDrop}
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onClick={() => !importing && fileInputRef.current?.click()}
+          className={cn(
+            "flex flex-col items-center justify-center gap-3 px-6 py-10 text-center transition-colors",
+            !importing && "cursor-pointer"
+          )}
+        >
+          <div
+            className={cn(
+              "flex h-12 w-12 items-center justify-center rounded-full transition-colors",
+              dragging ? "bg-primary/10" : "bg-muted"
+            )}
+          >
+            {importing ? (
+              <Loader2 className="size-6 animate-spin text-primary" />
+            ) : (
+              <FileSpreadsheet
+                className={cn(
+                  "size-6 transition-colors",
+                  dragging ? "text-primary" : "text-muted-foreground"
+                )}
+              />
+            )}
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-medium">
+              {importing
+                ? "Importing your catalog…"
+                : dragging
+                  ? "Drop your file to import"
+                  : "Drag & drop your catalog CSV here"}
+            </p>
+            <p className="text-xs text-muted-foreground max-w-md">
+              Export your catalog from the Noon Partner Portal (CSV) and upload
+              the file here to sync your products.
+            </p>
+          </div>
+          {!importing && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={(e) => {
+                e.stopPropagation()
+                fileInputRef.current?.click()
+              }}
+            >
+              <Upload className="size-3.5" />
+              Choose file
+            </Button>
+          )}
+        </div>
+      </Card>
+
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Search by name or SKU…"
           className="pl-9 bg-background"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
         />
+        {search && (
+          <button
+            onClick={() => setSearch("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            aria-label="Clear search"
+          >
+            <X className="size-4" />
+          </button>
+        )}
       </div>
 
       {/* Product Grid */}
@@ -153,19 +281,23 @@ export function ProductsPage() {
             </Card>
           ))}
         </div>
-      ) : products.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <Card className="flex flex-col items-center justify-center py-16 text-center">
           <CardContent className="space-y-2">
             <Package className="mx-auto size-10 text-muted-foreground/40" />
-            <p className="text-sm font-medium">No products yet</p>
+            <p className="text-sm font-medium">
+              {products.length === 0 ? "No products yet" : "No matching products"}
+            </p>
             <p className="text-xs text-muted-foreground">
-              Sync with the Noon API to import your catalog.
+              {products.length === 0
+                ? "Import a CSV from the Noon Partner Portal to populate your catalog."
+                : "Try a different search term."}
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {products.map((product) => (
+          {filtered.map((product) => (
             <Card key={product.id} className="group relative overflow-hidden transition-shadow hover:shadow-md">
               {/* Product thumbnail placeholder */}
               <div className="flex h-36 items-center justify-center bg-muted/50">
