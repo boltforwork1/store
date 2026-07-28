@@ -86,10 +86,6 @@ export function acknowledgeNoonOrder(orderId: string): Promise<NoonResult> {
   return callNoonFunction("noon-ack-order", { order_id: orderId })
 }
 
-export function createNoonShipment(orderId: string): Promise<NoonResult> {
-  return callNoonFunction("noon-create-shipment", { order_id: orderId })
-}
-
 export function printNoonLabel(orderId: string): Promise<NoonResult> {
   return callNoonFunction("noon-print-label", { order_id: orderId })
 }
@@ -474,6 +470,48 @@ export async function markItemOos(params: {
     fbpi_order_nr: data.fbpi_order_nr,
     mp_item_nr: data.mp_item_nr,
     integration_status: data.integration_status,
+    error: result.error,
+  }
+}
+
+export type NoonShipmentResult = {
+  ok: boolean
+  fbpi_order_nr?: string
+  integration_shipment_nr?: string
+  awb_nr?: string
+  items?: string[]
+  status?: string
+  error?: string
+}
+
+/**
+ * Create a shipment for an order via the `noon-create-shipment` edge function.
+ * The function calls Noon's `/fbpi/v1/shipment/create` endpoint with the
+ * provided warehouse code, order number, line items, and AWB number (auto-
+ * generated if omitted), then updates the local order and item statuses to
+ * SHIPPED.
+ */
+export async function createNoonShipment(params: {
+  warehouse_code: string
+  fbpi_order_nr: string
+  items: string[]
+  awb_nr?: string
+}): Promise<NoonShipmentResult> {
+  const result = await callNoonFunction("noon-create-shipment", params)
+  const data = (result.data ?? {}) as {
+    fbpi_order_nr?: string
+    integration_shipment_nr?: string
+    awb_nr?: string
+    items?: string[]
+    status?: string
+  }
+  return {
+    ok: result.ok,
+    fbpi_order_nr: data.fbpi_order_nr,
+    integration_shipment_nr: data.integration_shipment_nr,
+    awb_nr: data.awb_nr,
+    items: data.items,
+    status: data.status,
     error: result.error,
   }
 }

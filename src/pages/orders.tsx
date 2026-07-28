@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react"
-import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, AlertTriangle } from "lucide-react"
+import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, AlertTriangle, Truck, PackageCheck } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -25,8 +25,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Checkbox } from "@/components/ui/checkbox"
 import { supabase } from "@/lib/supabase"
-import { syncNoonOrders, markItemOos } from "@/lib/noon"
+import { syncNoonOrders, markItemOos, createNoonShipment } from "@/lib/noon"
 import type { Order, OrderItem } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -57,6 +66,10 @@ export function OrdersPage() {
   const [oosTarget, setOosTarget] = useState<{ fbpi_order_nr: string; mp_item_nr: string } | null>(null)
   const [markingOos, setMarkingOos] = useState(false)
   const [oosItemNr, setOosItemNr] = useState<string | null>(null)
+  const [shipmentTarget, setShipmentTarget] = useState<OrderWithItemCount | null>(null)
+  const [shipmentAwb, setShipmentAwb] = useState("")
+  const [shipmentSelectedItems, setShipmentSelectedItems] = useState<Set<string>>(new Set())
+  const [creatingShipment, setCreatingShipment] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -163,6 +176,100 @@ export function OrdersPage() {
     if (OOS_BLOCKED_STATUSES.has(integration)) return false
     if (OOS_BLOCKED_STATUSES.has(mp)) return false
     return true
+  }
+
+  // An order is fulfillable if it has at least one item that is not shipped,
+  // cancelled, or out of stock.
+  function isOrderFulfillable(order: OrderWithItemCount): boolean {
+    const items = order.fbpi_order_nr ? itemsByOrder[order.fbpi_order_nr] : undefined
+    if (!items || items.length === 0) return false
+    return items.some((it) => canMarkOos(it))
+  }
+
+  function openShipmentDialog(order: OrderWithItemCount) {
+    const items = order.fbpi_order_nr ? itemsByOrder[order.fbpi_order_nr] : undefined
+    const fulfillable = (items ?? []).filter((it) => canMarkOos(it))
+    setShipmentTarget(order)
+    setShipmentAwb("")
+    setShipmentSelectedItems(new Set(fulfillable.map((it) => it.mp_item_nr)))
+  }
+
+  function toggleShipmentItem(mpItemNr: string) {
+    setShipmentSelectedItems((prev) => {
+      const next = new Set(prev)
+      if (next.has(mpItemNr)) {
+        next.delete(mpItemNr)
+      } else {
+        next.add(mpItemNr)
+      }
+      return next
+    })
+  }
+
+  async function handleConfirmCreateShipment() {
+    if (!shipmentTarget || !shipmentTarget.fbpi_order_nr) return
+
+    const warehouse = (shipmentTarget.warehouse_code ?? warehouseCode).trim()
+    if (!warehouse) {
+      toast.error("Warehouse code is required to create a shipment")
+      return
+    }
+
+    const selectedItems = Array.from(shipmentSelectedItems)
+    if (selectedItems.length === 0) {
+      toast.error("Select at least one item to ship")
+      return
+    }
+
+    setCreatingShipment(true)
+    const toastId = toast.loading("Creating shipment on Noon…")
+
+    try {
+      const result = await createNoonShipment({
+        warehouse_code: warehouse,
+        fbpi_order_nr: shipmentTarget.fbpi_order_nr,
+        items: selectedItems,
+        awb_nr: shipmentAwb.trim() || undefined,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error || "Failed to create shipment", { id: toastId })
+        return
+      }
+
+      toast.success(
+        `Shipment created (AWB: ${result.awb_nr ?? "auto"})`,
+        { id: toastId }
+      )
+
+      // Update local state: mark shipped items and the order status.
+      setItemsByOrder((prev) => {
+        const list = prev[shipmentTarget.fbpi_order_nr as string]
+        if (!list) return prev
+        return {
+          ...prev,
+          [shipmentTarget.fbpi_order_nr as string]: list.map((it) =>
+            selectedItems.includes(it.mp_item_nr)
+              ? { ...it, integration_status: "SHIPPED" }
+              : it
+          ),
+        }
+      })
+
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.fbpi_order_nr === shipmentTarget.fbpi_order_nr
+            ? { ...o, status: "SHIPPED" }
+            : o
+        )
+      )
+
+      setShipmentTarget(null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
+    } finally {
+      setCreatingShipment(false)
+    }
   }
 
   async function handleConfirmMarkOos() {
@@ -595,9 +702,25 @@ export function OrdersPage() {
                                   </div>
                                 ) : items && items.length > 0 ? (
                                   <div className="space-y-3">
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                      Line Items ({items.length})
-                                    </p>
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                        Line Items ({items.length})
+                                      </p>
+                                      {isOrderFulfillable(order) && (
+                                        <Button
+                                          variant="default"
+                                          size="sm"
+                                          className="h-7 gap-1"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            openShipmentDialog(order)
+                                          }}
+                                        >
+                                          <Truck className="size-3" />
+                                          Fulfill Order
+                                        </Button>
+                                      )}
+                                    </div>
                                     <div className="overflow-hidden rounded-lg border bg-background">
                                       <Table>
                                         <TableHeader>
@@ -728,6 +851,113 @@ export function OrdersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Create Shipment Dialog */}
+      <Dialog
+        open={shipmentTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !creatingShipment) {
+            setShipmentTarget(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Truck className="size-5" />
+              Create Shipment
+            </DialogTitle>
+            <DialogDescription>
+              Fulfill order{" "}
+              <span className="font-mono font-medium">
+                {shipmentTarget?.fbpi_order_nr}
+              </span>{" "}
+              via Noon. Select the items to ship and enter an AWB number (optional
+              — one will be auto-generated if left blank).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Items selection */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Items to Ship
+              </Label>
+              <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border p-2">
+                {(shipmentTarget?.fbpi_order_nr
+                  ? itemsByOrder[shipmentTarget.fbpi_order_nr]
+                  : [])?.map((item) => {
+                    const fulfillable = canMarkOos(item)
+                    const checked = shipmentSelectedItems.has(item.mp_item_nr)
+                    return (
+                      <label
+                        key={item.mp_item_nr}
+                        className={cn(
+                          "flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50",
+                          !fulfillable && "cursor-not-allowed opacity-50 hover:bg-transparent"
+                        )}
+                      >
+                        <Checkbox
+                          checked={checked}
+                          disabled={!fulfillable}
+                          onCheckedChange={() => toggleShipmentItem(item.mp_item_nr)}
+                        />
+                        <span className="flex-1 font-mono text-xs">
+                          {item.mp_item_nr}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {item.integration_status ?? item.mp_status ?? "—"}
+                        </span>
+                      </label>
+                    )
+                  })}
+                {(shipmentTarget?.fbpi_order_nr
+                  ? itemsByOrder[shipmentTarget.fbpi_order_nr]
+                  : [])?.length === 0 && (
+                  <p className="py-4 text-center text-xs text-muted-foreground">
+                    No items available.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* AWB number input */}
+            <div className="space-y-1.5">
+              <Label htmlFor="awb-nr">AWB Number (optional)</Label>
+              <Input
+                id="awb-nr"
+                placeholder="Auto-generated if left blank"
+                value={shipmentAwb}
+                onChange={(e) => setShipmentAwb(e.target.value)}
+                className="bg-background"
+                disabled={creatingShipment}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShipmentTarget(null)}
+              disabled={creatingShipment}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmCreateShipment}
+              disabled={creatingShipment || shipmentSelectedItems.size === 0}
+              className="gap-1.5"
+            >
+              {creatingShipment ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <PackageCheck className="size-4" />
+              )}
+              {creatingShipment ? "Creating…" : "Create Shipment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
