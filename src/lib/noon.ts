@@ -401,3 +401,45 @@ export async function syncNoonCatalogSingle(params: {
     error: result.error,
   }
 }
+
+export type NoonSyncedOrder = {
+  fbpi_order_nr: string
+  mp_order_nr: string | null
+  warehouse_code: string | null
+  order_created_at: string | null
+  status: string
+  item_count: number
+}
+
+export type NoonOrdersSyncResult = {
+  ok: boolean
+  count?: number
+  total_items?: number
+  orders?: NoonSyncedOrder[]
+  error?: string
+}
+
+/**
+ * Sync orders from the Noon FBPI orders list endpoint via the
+ * `noon-sync-orders` edge function. The function POSTs the warehouse code to
+ * Noon's `/fbpi/v1/fbpi-orders/list` endpoint, upserts the orders and their
+ * line items into the `orders` and `order_items` tables, and returns the
+ * normalized rows so the UI can update immediately.
+ */
+export async function syncNoonOrders(params: {
+  warehouse_code: string
+}): Promise<NoonOrdersSyncResult> {
+  const result = await callNoonFunction("noon-sync-orders", params)
+  const data = (result.data ?? {}) as {
+    count?: number
+    total_items?: number
+    orders?: NoonSyncedOrder[]
+  }
+  return {
+    ok: result.ok,
+    count: data.count,
+    total_items: data.total_items,
+    orders: data.orders,
+    error: result.error,
+  }
+}

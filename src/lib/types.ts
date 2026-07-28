@@ -14,10 +14,24 @@ export type OrderStatus = "Pending" | "Acknowledged" | "Shipped"
 
 export type Order = {
   id: string
-  noon_order_id: string
-  order_date: string
-  total_price: number
-  status: string
+  noon_order_id: string | null
+  fbpi_order_nr: string | null
+  mp_order_nr: string | null
+  warehouse_code: string | null
+  order_date: string | null
+  order_created_at: string | null
+  total_price: number | null
+  status: string | null
+  customer_country_code: string | null
+}
+
+export type OrderItem = {
+  mp_item_nr: string
+  fbpi_order_nr: string
+  partner_sku: string | null
+  mp_status: string | null
+  integration_status: string | null
+  price: number | null
 }
 
 export type Settings = {

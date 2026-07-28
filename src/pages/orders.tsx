@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react"
-import { Search, ListFilter as Filter, Download, Eye, MoveHorizontal as MoreHorizontal, ChevronLeft, ChevronRight, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, FlaskConical, Hash } from "lucide-react"
+import React, { useCallback, useEffect, useState } from "react"
+import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,27 +14,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
-import { fetchNoonOrdersApi, createNoonSandboxOrder, fetchNoonOrderById, INVALID_WAREHOUSE_CODE_MESSAGE, WAREHOUSE_CODE_REGEX } from "@/lib/noon"
+import { syncNoonOrders } from "@/lib/noon"
+import type { Order, OrderItem } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-type OrderRow = {
-  id: string
-  noon_order_id: string | null
-  order_date: string | null
-  total_price: number | null
-  status: string | null
-  customer_country_code: string | null
-}
-
 const STATUS_STYLES: Record<string, string> = {
+  NEW: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300",
   Fetched: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300",
   Completed: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300",
   Processing: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300",
@@ -45,103 +32,75 @@ const STATUS_STYLES: Record<string, string> = {
   Refunded: "bg-muted text-muted-foreground border-border",
 }
 
+type OrderWithItemCount = Order & { item_count: number }
+
 export function OrdersPage() {
   const [loading, setLoading] = useState(true)
-  const [fetching, setFetching] = useState(false)
-  const [creatingOrder, setCreatingOrder] = useState(false)
-  const [orders, setOrders] = useState<OrderRow[]>([])
+  const [syncing, setSyncing] = useState(false)
+  const [orders, setOrders] = useState<OrderWithItemCount[]>([])
   const [activeTab, setActiveTab] = useState("all")
   const [search, setSearch] = useState("")
+  const [warehouseCode, setWarehouseCode] = useState("W00210108EG")
+  const [expandedRow, setExpandedRow] = useState<string | null>(null)
+  const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({})
+  const [loadingItems, setLoadingItems] = useState<string | null>(null)
 
-  // Fetch form state
-  const [warehouseCode, setWarehouseCode] = useState("")
-
-  // Fetch-by-ID form state
-  const [orderIdInput, setOrderIdInput] = useState("")
-  const [fetchingById, setFetchingById] = useState(false)
-
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from("orders")
-      .select("id, noon_order_id, order_date, total_price, status, customer_country_code")
-      .order("order_date", { ascending: false })
+      .select(`
+        id,
+        noon_order_id,
+        fbpi_order_nr,
+        mp_order_nr,
+        warehouse_code,
+        order_date,
+        order_created_at,
+        total_price,
+        status,
+        customer_country_code
+      `)
+      .order("order_created_at", { ascending: false, nullsFirst: false })
 
     if (error) {
       console.error("Failed to load orders:", error.message)
+      setOrders([])
+    } else {
+      // Fetch item counts per order in a single query.
+      const orderKeys = (data ?? [])
+        .map((o) => o.fbpi_order_nr)
+        .filter((k): k is string => typeof k === "string" && k.trim() !== "")
+
+      let countMap: Record<string, number> = {}
+      if (orderKeys.length > 0) {
+        const { data: itemsData, error: itemsError } = await supabase
+          .from("order_items")
+          .select("fbpi_order_nr")
+          .in("fbpi_order_nr", orderKeys)
+
+        if (!itemsError && itemsData) {
+          for (const it of itemsData as { fbpi_order_nr: string }[]) {
+            countMap[it.fbpi_order_nr] = (countMap[it.fbpi_order_nr] ?? 0) + 1
+          }
+        }
+      }
+
+      const rows = (data ?? []).map((o) => ({
+        ...(o as Order),
+        item_count: countMap[o.fbpi_order_nr ?? ""] ?? 0,
+      })) as OrderWithItemCount[]
+
+      setOrders(rows)
     }
-    setOrders((data as OrderRow[] | null) ?? [])
     setLoading(false)
-  }
+  }, [])
 
   useEffect(() => {
     load()
-  }, [])
+  }, [load])
 
-  async function handleCreateTestOrder() {
-    const warehouse = warehouseCode.trim()
-    if (!warehouse) {
-      toast.error("Warehouse code is required")
-      return
-    }
-
-    if (!WAREHOUSE_CODE_REGEX.test(warehouse)) {
-      toast.error(INVALID_WAREHOUSE_CODE_MESSAGE)
-      return
-    }
-
-    setCreatingOrder(true)
-    const toastId = toast.loading("Creating sandbox test order…")
-
-    try {
-      const result = await createNoonSandboxOrder({ warehouse_code: warehouse })
-
-      if (!result.ok || !result.fbpi_order_nr) {
-        toast.error(result.error || "Failed to create sandbox order", { id: toastId })
-        return
-      }
-
-      toast.success(`Sandbox order created: ${result.fbpi_order_nr}. Click Sync Orders to fetch it!`, {
-        id: toastId,
-      })
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error), { id: toastId })
-    } finally {
-      setCreatingOrder(false)
-    }
-  }
-
-  async function handleFetchOrderById(e: React.FormEvent) {
-    e.preventDefault()
-
-    const orderId = orderIdInput.trim()
-    if (!orderId) {
-      toast.error("Order ID is required")
-      return
-    }
-
-    setFetchingById(true)
-    const toastId = toast.loading(`Fetching order ${orderId} from Noon…`)
-
-    try {
-      const result = await fetchNoonOrderById({ fbpi_order_nr: orderId })
-
-      if (!result.ok || !result.order) {
-        toast.error(result.error || "Failed to fetch order", { id: toastId })
-        return
-      }
-
-      toast.success(`Order ${result.order.noon_order_id} fetched and added`, { id: toastId })
-      setOrderIdInput("")
-      await load()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error), { id: toastId })
-    } finally {
-      setFetchingById(false)
-    }
-  }
-
-  async function handleFetchOrders(e: React.FormEvent) {
+  async function handleSyncOrders(e: React.FormEvent) {
     e.preventDefault()
 
     const warehouse = warehouseCode.trim()
@@ -150,45 +109,104 @@ export function OrdersPage() {
       return
     }
 
-    if (!WAREHOUSE_CODE_REGEX.test(warehouse)) {
-      toast.error(INVALID_WAREHOUSE_CODE_MESSAGE)
-      return
-    }
-
-    setFetching(true)
-    const toastId = toast.loading("Fetching live orders from Noon…")
+    setSyncing(true)
+    const toastId = toast.loading("Syncing orders from Noon…")
 
     try {
-      const result = await fetchNoonOrdersApi({ warehouse_code: warehouse })
+      const result = await syncNoonOrders({ warehouse_code: warehouse })
 
       if (!result.ok) {
-        toast.error(result.error || "Noon API request failed", { id: toastId })
+        toast.error(result.error || "Failed to sync orders", { id: toastId })
         return
       }
 
-      const count = result.count ?? result.orders?.length ?? 0
-      toast.success(`Fetched ${count} order${count === 1 ? "" : "s"} from Noon`, {
-        id: toastId,
-      })
+      const count = result.count ?? 0
+      const totalItems = result.total_items ?? 0
+      toast.success(
+        `Synced ${count} order${count === 1 ? "" : "s"} with ${totalItems} line item${totalItems === 1 ? "" : "s"}`,
+        { id: toastId }
+      )
       await load()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error), { id: toastId })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
     } finally {
-      setFetching(false)
+      setSyncing(false)
     }
+  }
+
+  async function toggleRow(order: OrderWithItemCount) {
+    const key = order.fbpi_order_nr ?? order.id
+    if (expandedRow === key) {
+      setExpandedRow(null)
+      return
+    }
+
+    setExpandedRow(key)
+
+    if (!order.fbpi_order_nr) return
+    if (itemsByOrder[order.fbpi_order_nr]) return // already loaded
+
+    setLoadingItems(order.fbpi_order_nr)
+    const { data, error } = await supabase
+      .from("order_items")
+      .select("mp_item_nr, fbpi_order_nr, partner_sku, mp_status, integration_status, price")
+      .eq("fbpi_order_nr", order.fbpi_order_nr)
+      .order("mp_item_nr")
+
+    if (error) {
+      toast.error("Failed to load order items: " + error.message)
+    } else {
+      setItemsByOrder((prev) => ({
+        ...prev,
+        [order.fbpi_order_nr as string]: (data ?? []) as OrderItem[],
+      }))
+    }
+    setLoadingItems(null)
+  }
+
+  function exportCsv() {
+    if (orders.length === 0) {
+      toast.error("No orders to export")
+      return
+    }
+
+    const headers = ["Order Number", "MP Order Number", "Warehouse", "Created At", "Status", "Item Count", "Total Price"]
+    const rows = orders.map((o) => [
+      o.fbpi_order_nr ?? o.noon_order_id ?? "",
+      o.mp_order_nr ?? "",
+      o.warehouse_code ?? "",
+      o.order_created_at ?? o.order_date ?? "",
+      o.status ?? "",
+      String(o.item_count),
+      o.total_price != null ? String(o.total_price) : "",
+    ])
+
+    const csv = [headers, ...rows]
+      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+      .join("\n")
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    toast.success("Orders exported")
   }
 
   const statusCounts = {
     all: orders.length,
+    NEW: orders.filter((o) => (o.status ?? "NEW") === "NEW").length,
     Pending: orders.filter((o) => o.status === "Pending").length,
     Acknowledged: orders.filter((o) => o.status === "Acknowledged").length,
     Shipped: orders.filter((o) => o.status === "Shipped").length,
     Completed: orders.filter((o) => o.status === "Completed").length,
-    Fetched: orders.filter((o) => o.status === "Fetched").length,
   }
 
   const tabs = [
     { label: "All Orders", value: "all", count: statusCounts.all },
+    { label: "New", value: "NEW", count: statusCounts.NEW },
     { label: "Pending", value: "Pending", count: statusCounts.Pending },
     { label: "Acknowledged", value: "Acknowledged", count: statusCounts.Acknowledged },
     { label: "Shipped", value: "Shipped", count: statusCounts.Shipped },
@@ -196,12 +214,13 @@ export function OrdersPage() {
   ]
 
   const filtered = orders.filter((o) => {
-    const matchesTab = activeTab === "all" || o.status === activeTab
+    const matchesTab = activeTab === "all" || (o.status ?? "NEW") === activeTab
     const q = search.trim().toLowerCase()
     const matchesSearch =
       q === "" ||
-      (o.noon_order_id ?? "").toLowerCase().includes(q) ||
-      (o.customer_country_code ?? "").toLowerCase().includes(q)
+      (o.fbpi_order_nr ?? "").toLowerCase().includes(q) ||
+      (o.mp_order_nr ?? "").toLowerCase().includes(q) ||
+      (o.warehouse_code ?? "").toLowerCase().includes(q)
     return matchesTab && matchesSearch
   })
 
@@ -210,8 +229,8 @@ export function OrdersPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
             <Card key={i}>
               <CardContent className="pt-6"><Skeleton className="h-8 w-20" /></CardContent>
             </Card>
@@ -233,7 +252,7 @@ export function OrdersPage() {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Orders</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {orders.length} total orders · {statusCounts.Pending} pending
+            {orders.length} total orders · {statusCounts.NEW} new
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -241,7 +260,7 @@ export function OrdersPage() {
             <RefreshCw className="size-3.5" />
             Refresh
           </Button>
-          <Button variant="outline" size="sm" className="gap-1.5">
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCsv}>
             <Download className="size-3.5" />
             Export CSV
           </Button>
@@ -258,12 +277,30 @@ export function OrdersPage() {
               </div>
               <div className="min-w-0">
                 <CardTitle className="text-sm">Total Orders</CardTitle>
-                <CardDescription className="text-xs">Fetched from Noon</CardDescription>
+                <CardDescription className="text-xs">Synced from Noon</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent className="pt-0">
             <p className="text-2xl font-bold tabular-nums">{orders.length.toLocaleString()}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Boxes className="size-4 text-muted-foreground" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="text-sm">Total Line Items</CardTitle>
+                <CardDescription className="text-xs">Across all orders</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <p className="text-2xl font-bold tabular-nums">
+              {orders.reduce((sum, o) => sum + o.item_count, 0).toLocaleString()}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -286,112 +323,39 @@ export function OrdersPage() {
             </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                <Warehouse className="size-4 text-muted-foreground" />
-              </div>
-              <div className="min-w-0">
-                <CardTitle className="text-sm">Countries</CardTitle>
-                <CardDescription className="text-xs">Unique customer countries</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <p className="text-2xl font-bold tabular-nums">
-              {new Set(orders.map((o) => o.customer_country_code).filter(Boolean)).size}
-            </p>
-          </CardContent>
-        </Card>
       </div>
 
-      {/* Fetch Orders Form */}
+      {/* Sync Orders Form */}
       <Card>
         <CardHeader className="pb-4">
           <div>
-            <CardTitle className="text-base">Fetch Orders from Noon</CardTitle>
+            <CardTitle className="text-base">Sync Orders from Noon</CardTitle>
             <CardDescription className="mt-1">
-              Pull live orders from the Noon FBPI API using your warehouse code.
-              Fetched orders are saved to your dashboard automatically.
+              Pull all FBPI orders for a warehouse from the Noon API. Orders and
+              their line items are saved to your dashboard automatically.
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleFetchOrders} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <form onSubmit={handleSyncOrders} className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1 space-y-1.5">
               <Label htmlFor="warehouse-code">Warehouse Code</Label>
               <Input
                 id="warehouse-code"
-                placeholder="e.g. EGYPT-01"
+                placeholder="e.g. W00210108EG"
                 value={warehouseCode}
                 onChange={(e) => setWarehouseCode(e.target.value)}
                 className="bg-background"
-                disabled={fetching}
+                disabled={syncing}
               />
             </div>
-            <div className="flex gap-2 sm:w-auto">
-              <Button type="submit" disabled={fetching || creatingOrder} className="gap-1.5 sm:w-auto">
-                {fetching ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <RefreshCw className="size-3.5" />
-                )}
-                {fetching ? "Fetching…" : "Sync Orders"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleCreateTestOrder}
-                disabled={fetching || creatingOrder}
-                className="gap-1.5 sm:w-auto"
-              >
-                {creatingOrder ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <FlaskConical className="size-3.5" />
-                )}
-                {creatingOrder ? "Creating…" : "Create Test Order"}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Fetch Order by ID */}
-      <Card>
-        <CardHeader className="pb-4">
-          <div>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Hash className="size-4 text-muted-foreground" />
-              Fetch Order by ID
-            </CardTitle>
-            <CardDescription className="mt-1">
-              Sandbox orders may not appear in the list endpoint. Fetch a specific
-              order directly by its FBPI order number to view it on your dashboard.
-            </CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleFetchOrderById} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-1.5">
-              <Label htmlFor="order-id-input">FBPI Order Number</Label>
-              <Input
-                id="order-id-input"
-                placeholder="e.g. TEST-STR41759-SVWHizmZVI-IO-1"
-                value={orderIdInput}
-                onChange={(e) => setOrderIdInput(e.target.value)}
-                className="bg-background"
-                disabled={fetchingById}
-              />
-            </div>
-            <Button type="submit" disabled={fetchingById} className="gap-1.5 sm:w-auto">
-              {fetchingById ? (
+            <Button type="submit" disabled={syncing} className="gap-1.5 sm:w-auto">
+              {syncing ? (
                 <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <Search className="size-3.5" />
+                <RefreshCw className="size-3.5" />
               )}
-              {fetchingById ? "Fetching…" : "Fetch Order"}
+              {syncing ? "Syncing…" : "Sync Orders"}
             </Button>
           </form>
         </CardContent>
@@ -403,8 +367,8 @@ export function OrdersPage() {
             <Database className="mx-auto size-10 text-muted-foreground/40" />
             <p className="text-sm font-medium">No orders yet</p>
             <p className="text-xs text-muted-foreground max-w-sm">
-              Enter your warehouse code above and click "Sync Orders" to pull live
-              orders from the Noon FBPI API.
+              Enter your warehouse code above and click "Sync Orders" to pull
+              live orders from the Noon FBPI API.
             </p>
           </CardContent>
         </Card>
@@ -443,7 +407,7 @@ export function OrdersPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search by order ID or country…"
+                placeholder="Search by order number or warehouse…"
                 className="pl-9 bg-background"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -468,92 +432,159 @@ export function OrdersPage() {
             </div>
           </div>
 
-          {/* Orders Table */}
+          {/* Orders Table with expandable rows */}
           <Card>
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="pl-6 w-20">Order</TableHead>
-                    <TableHead>Date</TableHead>
+                    <TableHead className="w-10 pl-6"></TableHead>
+                    <TableHead className="w-32">Order Number</TableHead>
+                    <TableHead>Warehouse</TableHead>
+                    <TableHead>Created At</TableHead>
+                    <TableHead className="text-right">Items</TableHead>
                     <TableHead className="text-right">Total</TableHead>
-                    <TableHead>Country</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="pr-6 w-10"></TableHead>
+                    <TableHead className="pr-6">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((order) => (
-                    <TableRow key={order.id} className="hover:bg-muted/30">
-                      <TableCell className="pl-6 font-mono text-sm font-medium">
-                        {order.noon_order_id ?? order.id.slice(0, 8)}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {order.order_date ? new Date(order.order_date).toLocaleString() : "—"}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold tabular-nums">
-                        {order.total_price != null ? `$${Number(order.total_price).toFixed(2)}` : "—"}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {order.customer_country_code ? (
-                          <span className="rounded-md border px-2 py-0.5 text-xs font-medium uppercase">
-                            {order.customer_country_code}
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={cn(
-                            "rounded-full border px-2.5 py-0.5 text-xs font-medium",
-                            STATUS_STYLES[order.status ?? "Pending"] ??
-                              "bg-muted text-muted-foreground border-border"
-                          )}
-                        >
-                          {order.status ?? "Pending"}
-                        </span>
-                      </TableCell>
-                      <TableCell className="pr-6">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon-xs" className="rounded-md">
-                              <MoreHorizontal className="size-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
-                              <Eye className="size-3.5 mr-2" />
-                              View details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>Mark as shipped</DropdownMenuItem>
-                            <DropdownMenuItem>Print invoice</DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive focus:text-destructive">
-                              Cancel order
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                  {filtered.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                        No orders match the current filters.
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    filtered.map((order) => {
+                      const key = order.fbpi_order_nr ?? order.id
+                      const isOpen = expandedRow === key
+                      const items = order.fbpi_order_nr ? itemsByOrder[order.fbpi_order_nr] : undefined
+                      const isLoadingThis = loadingItems === order.fbpi_order_nr
+
+                      return (
+                        <React.Fragment key={key}>
+                          <TableRow
+                            className="cursor-pointer hover:bg-muted/30"
+                            onClick={() => toggleRow(order)}
+                          >
+                            <TableCell className="pl-6">
+                              <div className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent">
+                                {isOpen ? (
+                                  <ChevronDown className="size-4" />
+                                ) : (
+                                  <ChevronRight className="size-4" />
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-mono text-sm font-medium">
+                              {order.fbpi_order_nr ?? order.noon_order_id ?? order.id.slice(0, 8)}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {order.warehouse_code ? (
+                                <span className="inline-flex items-center gap-1.5">
+                                  <Warehouse className="size-3.5" />
+                                  <span className="font-mono text-xs">{order.warehouse_code}</span>
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {(order.order_created_at ?? order.order_date)
+                                ? new Date(order.order_created_at ?? order.order_date ?? "").toLocaleString()
+                                : "—"}
+                            </TableCell>
+                            <TableCell className="text-right font-semibold tabular-nums">
+                              {order.item_count}
+                            </TableCell>
+                            <TableCell className="text-right font-semibold tabular-nums">
+                              {order.total_price != null ? `$${Number(order.total_price).toFixed(2)}` : "—"}
+                            </TableCell>
+                            <TableCell className="pr-6">
+                              <span
+                                className={cn(
+                                  "rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                                  STATUS_STYLES[order.status ?? "NEW"] ??
+                                    "bg-muted text-muted-foreground border-border"
+                                )}
+                              >
+                                {order.status ?? "NEW"}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+
+                          {isOpen && (
+                            <TableRow key={`${key}-detail`} className="hover:bg-transparent">
+                              <TableCell colSpan={7} className="bg-muted/20 px-6 py-4">
+                                {isLoadingThis ? (
+                                  <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+                                    <Loader2 className="size-4 animate-spin" />
+                                    Loading line items…
+                                  </div>
+                                ) : items && items.length > 0 ? (
+                                  <div className="space-y-3">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                      Line Items ({items.length})
+                                    </p>
+                                    <div className="overflow-hidden rounded-lg border bg-background">
+                                      <Table>
+                                        <TableHeader>
+                                          <TableRow className="hover:bg-transparent">
+                                            <TableHead className="pl-4">Item Number</TableHead>
+                                            <TableHead>Partner SKU</TableHead>
+                                            <TableHead>MP Status</TableHead>
+                                            <TableHead>Integration Status</TableHead>
+                                            <TableHead className="pr-4 text-right">Price</TableHead>
+                                          </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                          {items.map((item) => (
+                                            <TableRow key={item.mp_item_nr} className="hover:bg-muted/30">
+                                              <TableCell className="pl-4 font-mono text-xs">
+                                                {item.mp_item_nr}
+                                              </TableCell>
+                                              <TableCell className="font-mono text-xs">
+                                                {item.partner_sku ?? "—"}
+                                              </TableCell>
+                                              <TableCell>
+                                                <span className="text-xs">{item.mp_status ?? "—"}</span>
+                                              </TableCell>
+                                              <TableCell>
+                                                <span className="text-xs">{item.integration_status ?? "—"}</span>
+                                              </TableCell>
+                                              <TableCell className="pr-4 text-right font-semibold tabular-nums">
+                                                {item.price != null ? `$${Number(item.price).toFixed(2)}` : "—"}
+                                              </TableCell>
+                                            </TableRow>
+                                          ))}
+                                        </TableBody>
+                                      </Table>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="py-4 text-sm text-muted-foreground">
+                                    No line items found for this order.
+                                  </p>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </React.Fragment>
+                      )
+                    })
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
 
-            {/* Pagination */}
+            {/* Footer */}
             <div className="flex items-center justify-between border-t px-6 py-3">
               <p className="text-xs text-muted-foreground">
                 Showing {filtered.length} of {orders.length} orders
               </p>
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon-xs" disabled>
-                  <ChevronLeft className="size-3.5" />
-                </Button>
-                <span className="px-2 text-xs font-medium">1 / 1</span>
-                <Button variant="ghost" size="icon-xs" disabled>
-                  <ChevronRight className="size-3.5" />
-                </Button>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Click a row to view line items
+              </p>
             </div>
           </Card>
         </>
