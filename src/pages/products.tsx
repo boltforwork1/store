@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
 import { supabase } from "@/lib/supabase"
-import { importCatalogFromFile, syncNoonCatalog } from "@/lib/noon"
+import { importCatalogFromFile, syncNoonCatalog, syncNoonCatalogSingle } from "@/lib/noon"
 import type { Product } from "@/lib/types"
 
 type DisplayProduct = {
@@ -35,6 +35,7 @@ type DisplayProduct = {
   stock: number
   status: string
   image_url: string | null
+  needsSync: boolean
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -51,6 +52,8 @@ function deriveStatus(stock: number): string {
 }
 
 function toDisplayProduct(row: Product): DisplayProduct {
+  const hasName = row.name != null && row.name.trim() !== ""
+  const hasImage = row.image_url != null && row.image_url.trim() !== ""
   return {
     id: row.partner_sku,
     name: row.name ?? row.partner_sku,
@@ -58,6 +61,7 @@ function toDisplayProduct(row: Product): DisplayProduct {
     stock: row.stock_qty ?? 0,
     status: row.is_active === false ? "Discontinued" : deriveStatus(row.stock_qty ?? 0),
     image_url: row.image_url ?? null,
+    needsSync: !hasName || !hasImage,
   }
 }
 
@@ -74,6 +78,8 @@ export function ProductsPage() {
   const [adding, setAdding] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<DisplayProduct | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [syncSkuInputs, setSyncSkuInputs] = useState<Record<string, string>>({})
+  const [syncingSku, setSyncingSku] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadProducts = useCallback(async () => {
@@ -172,6 +178,63 @@ export function ProductsPage() {
     setDeleteTarget(null)
     setDeleting(false)
     await loadProducts()
+  }
+
+  async function handleSyncSingleProduct(partnerSku: string) {
+    const noonSku = (syncSkuInputs[partnerSku] ?? "").trim()
+    if (!noonSku) {
+      toast.error("Enter a Noon SKU first")
+      return
+    }
+
+    setSyncingSku(partnerSku)
+    const toastId = toast.loading(`Syncing details from Noon for ${partnerSku}…`)
+
+    try {
+      const result = await syncNoonCatalogSingle({
+        partner_sku: partnerSku,
+        sku_parent: noonSku,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error ?? "Failed to sync product details", { id: toastId })
+        return
+      }
+
+      const gotName = result.name != null && result.name.trim() !== ""
+      const gotImage = result.image_url != null && result.image_url.trim() !== ""
+
+      if (!gotName && !gotImage) {
+        toast.info("Noon returned no catalog details for this SKU.", { id: toastId })
+      } else {
+        toast.success(`Synced details for ${partnerSku}`, { id: toastId })
+      }
+
+      // Update the single card in place so it refreshes instantly.
+      setProducts((prev) =>
+        prev.map((p) => {
+          if (p.id !== partnerSku) return p
+          const newName = gotName ? (result.name as string) : p.name
+          const newImage = gotImage ? (result.image_url as string) : p.image_url
+          return {
+            ...p,
+            name: newName,
+            image_url: newImage,
+            needsSync: !newName || !newImage,
+          }
+        })
+      )
+      setSyncSkuInputs((prev) => {
+        const next = { ...prev }
+        delete next[partnerSku]
+        return next
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unexpected error"
+      toast.error(message, { id: toastId })
+    } finally {
+      setSyncingSku(null)
+    }
   }
 
   async function handleSyncCatalog() {
@@ -479,6 +542,48 @@ export function ProductsPage() {
                     {product.stock > 0 ? `${product.stock} in stock` : "No stock"}
                   </span>
                 </div>
+
+                {product.needsSync && (
+                  <div className="mt-3 pt-3 border-t">
+                    <p className="text-xs text-muted-foreground mb-1.5">
+                      Missing details? Enter the Noon SKU to fetch name & image.
+                    </p>
+                    <div className="flex gap-1.5">
+                      <Input
+                        placeholder="Noon SKU (e.g. Z3A…)"
+                        className="h-8 text-xs"
+                        value={syncSkuInputs[product.id] ?? ""}
+                        onChange={(e) =>
+                          setSyncSkuInputs((prev) => ({
+                            ...prev,
+                            [product.id]: e.target.value,
+                          }))
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            handleSyncSingleProduct(product.id)
+                          }
+                        }}
+                        disabled={syncingSku === product.id}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 shrink-0 gap-1 text-xs"
+                        onClick={() => handleSyncSingleProduct(product.id)}
+                        disabled={syncingSku === product.id || !syncSkuInputs[product.id]?.trim()}
+                      >
+                        {syncingSku === product.id ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="size-3" />
+                        )}
+                        {syncingSku === product.id ? "Syncing" : "Sync"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

@@ -377,3 +377,27 @@ export async function syncNoonCatalog(params?: {
     error: result.error,
   }
 }
+
+export type NoonCatalogSingleSyncResult = {
+  ok: boolean
+  name?: string | null
+  image_url?: string | null
+  error?: string
+}
+
+export async function syncNoonCatalogSingle(params: {
+  partner_sku: string
+  sku_parent: string
+}): Promise<NoonCatalogSingleSyncResult> {
+  const result = await callNoonFunction("noon-sync-catalog", params)
+  const data = (result.data ?? {}) as {
+    name?: string | null
+    image_url?: string | null
+  }
+  return {
+    ok: result.ok,
+    name: data.name,
+    image_url: data.image_url,
+    error: result.error,
+  }
+}

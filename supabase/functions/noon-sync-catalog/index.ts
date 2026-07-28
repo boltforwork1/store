@@ -234,7 +234,51 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const parsed = (await req.json().catch(() => ({}))) as { limit?: number }
+    const parsed = (await req.json().catch(() => ({}))) as {
+      limit?: number
+      partner_sku?: string
+      sku_parent?: string
+    }
+
+    // --- Single-product sync mode ---
+    // When both `partner_sku` (local) and `sku_parent` (Noon) are provided,
+    // fetch content for just that one product and update its row directly.
+    if (parsed.partner_sku && parsed.sku_parent) {
+      const partnerSku = String(parsed.partner_sku).trim()
+      const skuParent = String(parsed.sku_parent).trim()
+
+      const responseBody = await callNoonWithRetry(skuParent)
+      const content = findContentObject(responseBody)
+
+      const name = content ? extractName(content) : null
+      const imageUrl = content ? extractImageUrl(content) : null
+
+      const updatePayload: Record<string, unknown> = {}
+      if (name) updatePayload.name = name
+      if (imageUrl) updatePayload.image_url = imageUrl
+      updatePayload.noon_sku = skuParent
+
+      if (Object.keys(updatePayload).length > 1) {
+        const { error: updateError } = await supabase
+          .from("products")
+          .update(updatePayload)
+          .eq("partner_sku", partnerSku)
+
+        if (updateError) {
+          throw new Error(`Failed to update product: ${updateError.message}`)
+        }
+      }
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: { name, image_url: imageUrl },
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    // --- Batch sync mode (original) ---
     const limit = Math.min(Math.max(Number(parsed.limit) || SYNC_LIMIT, 1), 50)
 
     // 1. Fetch products that still need catalog details. We prioritize rows
@@ -242,7 +286,7 @@ Deno.serve(async (req: Request) => {
     //    keeps the sync deterministic across invocations.
     const { data: productRows, error: fetchError } = await supabase
       .from("products")
-      .select("partner_sku")
+      .select("partner_sku, noon_sku")
       .is("image_url", null)
       .order("created_at", { ascending: true })
       .limit(limit)
@@ -251,8 +295,9 @@ Deno.serve(async (req: Request) => {
       throw new Error(`Failed to fetch products: ${fetchError.message}`)
     }
 
-    const skus = (productRows ?? [])
-      .map((r) => (r as { partner_sku: string }).partner_sku)
+    const rows = (productRows ?? []) as { partner_sku: string; noon_sku: string | null }[]
+    const skus = rows
+      .map((r) => (r.noon_sku && r.noon_sku.trim() !== "" ? r.noon_sku : r.partner_sku))
       .filter((s) => typeof s === "string" && s.trim() !== "")
 
     if (skus.length === 0) {
@@ -268,7 +313,8 @@ Deno.serve(async (req: Request) => {
     // 2. Loop through each SKU and fetch content from Noon (one call per SKU).
     const results: SyncResult[] = []
 
-    for (const sku of skus) {
+    for (const [index, sku] of skus.entries()) {
+      const partnerSku = rows[index].partner_sku
       try {
         const responseBody = await callNoonWithRetry(sku)
         const content = findContentObject(responseBody)
@@ -276,13 +322,13 @@ Deno.serve(async (req: Request) => {
         const name = content ? extractName(content) : null
         const imageUrl = content ? extractImageUrl(content) : null
 
-        results.push({ sku, name, image_url: imageUrl, updated: false })
+        results.push({ sku: partnerSku, name, image_url: imageUrl, updated: false })
       } catch (err) {
         // Record the failure but continue with the remaining SKUs so a single
         // bad product doesn't abort the whole sync.
         const message = err instanceof Error ? err.message : "Unknown error"
         console.error(`Failed to sync content for ${sku}: ${message}`)
-        results.push({ sku, name: null, image_url: null, updated: false })
+        results.push({ sku: partnerSku, name: null, image_url: null, updated: false })
       }
     }
 
