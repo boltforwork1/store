@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Plus, Search, ListFilter as Filter, Package, Upload, FileSpreadsheet, Loader as Loader2, X, RefreshCw, Trash2 } from "lucide-react"
+import { Plus, Search, ListFilter as Filter, Package, Upload, FileSpreadsheet, Loader as Loader2, X, RefreshCw, Trash2, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -80,6 +80,9 @@ export function ProductsPage() {
   const [deleting, setDeleting] = useState(false)
   const [syncSkuInputs, setSyncSkuInputs] = useState<Record<string, string>>({})
   const [syncingSku, setSyncingSku] = useState<string | null>(null)
+  const [editTarget, setEditTarget] = useState<DisplayProduct | null>(null)
+  const [editName, setEditName] = useState("")
+  const [savingEdit, setSavingEdit] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadProducts = useCallback(async () => {
@@ -235,6 +238,41 @@ export function ProductsPage() {
     } finally {
       setSyncingSku(null)
     }
+  }
+
+  async function handleEditProduct(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editTarget) return
+    const name = editName.trim()
+
+    setSavingEdit(true)
+    const { error } = await supabase
+      .from("products")
+      .update({ name: name || null })
+      .eq("partner_sku", editTarget.id)
+
+    if (error) {
+      toast.error("Failed to update product: " + error.message)
+      setSavingEdit(false)
+      return
+    }
+
+    toast.success("Product name updated")
+    setProducts((prev) =>
+      prev.map((p) =>
+        p.id === editTarget.id
+          ? { ...p, name: name || p.id, needsSync: !name || !p.image_url }
+          : p
+      )
+    )
+    setEditTarget(null)
+    setEditName("")
+    setSavingEdit(false)
+  }
+
+  function openEditModal(product: DisplayProduct) {
+    setEditTarget(product)
+    setEditName(product.name === product.id ? "" : product.name)
   }
 
   async function handleSyncCatalog() {
@@ -511,18 +549,32 @@ export function ProductsPage() {
                     <p className="truncate text-sm font-semibold leading-tight">{product.name}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground font-mono">{product.id}</p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setDeleteTarget(product)
-                    }}
-                    aria-label={`Delete ${product.name}`}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
+                  <div className="flex shrink-0 gap-0.5">
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="text-muted-foreground hover:text-foreground hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openEditModal(product)
+                      }}
+                      aria-label={`Edit ${product.name}`}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setDeleteTarget(product)
+                      }}
+                      aria-label={`Delete ${product.name}`}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
@@ -589,6 +641,48 @@ export function ProductsPage() {
           ))}
         </div>
       )}
+      {/* Edit Product Dialog */}
+      <Dialog
+        open={editTarget !== null}
+        onOpenChange={(open) => { if (!savingEdit) { setEditTarget(open ? editTarget : null); if (!open) setEditName("") } }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Product</DialogTitle>
+            <DialogDescription>
+              Update the product name. This only changes your local catalog and does not contact Noon.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditProduct} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-product-name">Product Name</Label>
+              <Input
+                id="edit-product-name"
+                placeholder="Enter product name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground font-mono">SKU: {editTarget?.id}</p>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => { setEditTarget(null); setEditName("") }}
+                disabled={savingEdit}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savingEdit}>
+                {savingEdit ? <Loader2 className="size-4 animate-spin" /> : null}
+                {savingEdit ? "Saving…" : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Add Product Dialog */}
       <Dialog open={addOpen} onOpenChange={(open) => { if (!adding) setAddOpen(open) }}>
         <DialogContent>
