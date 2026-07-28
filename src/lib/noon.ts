@@ -259,6 +259,8 @@ export async function fetchNoonOrdersApi(params: {
 export type NoonSandboxOrderResult = {
   ok: boolean
   fbpi_order_nr?: string
+  item_count?: number
+  fetch_error?: string
   error?: string
 }
 
@@ -268,11 +270,13 @@ export async function createNoonSandboxOrder(params?: {
   const result = await callNoonFunction("noon-create-sandbox-order", params ?? {})
   // The edge function returns `fbpi_order_nr` at the top level of its JSON
   // body (not nested under `data`), so read it directly from `result`.
-  const body = result as { fbpi_order_nr?: string }
-  const nested = (result.data ?? {}) as { fbpi_order_nr?: string }
+  const body = result as { fbpi_order_nr?: string; item_count?: number; fetch_error?: string }
+  const nested = (result.data ?? {}) as { fbpi_order_nr?: string; item_count?: number }
   return {
     ok: result.ok,
     fbpi_order_nr: body.fbpi_order_nr ?? nested.fbpi_order_nr,
+    item_count: body.item_count ?? nested.item_count,
+    fetch_error: body.fetch_error,
     error: result.error,
   }
 }

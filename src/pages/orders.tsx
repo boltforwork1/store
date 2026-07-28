@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react"
-import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, AlertTriangle, Truck, PackageCheck, Wrench } from "lucide-react"
+import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, TriangleAlert as AlertTriangle, Truck, PackageCheck, Wrench } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -177,9 +177,25 @@ export function OrdersPage() {
         return
       }
 
-      toast.success(`Test Order created! Syncing…`, { id: toastId })
-      // Immediately sync to pull the newly created order into the local DB.
-      await runSyncOrders(warehouse, "Syncing the new test order…")
+      const itemCount = result.item_count
+      if (itemCount != null && itemCount > 0) {
+        toast.success(
+          `Test order ${result.fbpi_order_nr} created with ${itemCount} item${itemCount === 1 ? "" : "s"}`,
+          { id: toastId }
+        )
+      } else if (result.fetch_error) {
+        toast.warning(
+          `Test order created (${result.fbpi_order_nr}) but item fetch failed. Syncing…`,
+          { id: toastId }
+        )
+        await runSyncOrders(warehouse, "Syncing the new test order…")
+      } else {
+        toast.success(`Test order ${result.fbpi_order_nr} created!`, { id: toastId })
+      }
+
+      // Always refresh the orders list so the new test order (and its item
+      // count) appears immediately in the UI.
+      await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
     } finally {

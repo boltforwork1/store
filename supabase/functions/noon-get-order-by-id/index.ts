@@ -18,15 +18,31 @@ const supabase = createClient(
 )
 
 type NoonOrderItem = {
+  mp_item_nr?: string
+  item_nr?: string
+  mp_item_number?: string
+  fbpi_item_nr?: string
+  noon_item_nr?: string
+  item_id?: string
+  partner_sku?: string
+  mp_status?: string
+  integration_status?: string
   delivered_invoice_price?: number | string | null
+  price?: number | string | null
   [key: string]: unknown
 }
 
 type NoonOrder = {
   fbpi_order_nr?: string
+  mp_order_nr?: string
+  warehouse_code?: string
   order_created_at?: string
+  status?: string
   customer_country_code?: string
   items?: NoonOrderItem[]
+  order_items?: NoonOrderItem[]
+  line_items?: NoonOrderItem[]
+  order_lines?: NoonOrderItem[]
   [key: string]: unknown
 }
 
@@ -164,21 +180,69 @@ function coerceNumber(value: unknown): number {
   return isNaN(n) ? 0 : n
 }
 
-function calculateOrderTotal(order: NoonOrder): number {
-  if (!Array.isArray(order.items) || order.items.length === 0) return 0
-  return order.items.reduce(
-    (sum, item) => sum + coerceNumber(item.delivered_invoice_price),
-    0
-  )
+// Noon may return the line items under any of these keys depending on the
+// endpoint and response shape.
+const ITEM_ARRAY_KEYS = [
+  "items",
+  "order_items",
+  "line_items",
+  "order_lines",
+] as const
+
+// Noon may use different field names for the marketplace item number.
+const ITEM_NR_KEYS = [
+  "mp_item_nr",
+  "item_nr",
+  "mp_item_number",
+  "fbpi_item_nr",
+  "noon_item_nr",
+  "item_id",
+] as const
+
+function extractItemsArray(order: NoonOrder): NoonOrderItem[] {
+  for (const key of ITEM_ARRAY_KEYS) {
+    const candidate = (order as Record<string, unknown>)[key]
+    if (Array.isArray(candidate)) {
+      return candidate as NoonOrderItem[]
+    }
+  }
+  return []
+}
+
+function extractItemNr(item: NoonOrderItem): string | null {
+  for (const key of ITEM_NR_KEYS) {
+    const val = (item as Record<string, unknown>)[key]
+    if (typeof val === "string" && val.trim() !== "") {
+      return val.trim()
+    }
+    if (typeof val === "number" && val > 0) {
+      return String(val)
+    }
+  }
+  return null
+}
+
+type NormalizedOrderItem = {
+  mp_item_nr: string
+  fbpi_order_nr: string
+  partner_sku: string
+  mp_status: string
+  integration_status: string
+  price: number
 }
 
 type NormalizedOrder = {
+  fbpi_order_nr: string
   noon_order_id: string
+  mp_order_nr: string | null
+  warehouse_code: string | null
+  order_created_at: string | null
   order_date: string | null
   total_price: number
   customer_country_code: string | null
   status: string
   raw_payload: NoonOrder
+  items: NormalizedOrderItem[]
 }
 
 /**
@@ -207,34 +271,112 @@ function normalizeOrder(order: NoonOrder): NormalizedOrder | null {
   const orderId = order.fbpi_order_nr
   if (!orderId || typeof orderId !== "string") return null
 
+  const rawItems = extractItemsArray(order)
+
+  const items: NormalizedOrderItem[] = rawItems.map((item, idx) => {
+    const mpItemNr =
+      extractItemNr(item) ||
+      `ITEM-${orderId}-${idx}-${Math.random().toString(36).substring(2, 7)}`
+    const partnerSku = item.partner_sku || "UNKNOWN-SKU"
+    const price = coerceNumber(item.delivered_invoice_price || item.price || 0)
+    const mpStatus = item.mp_status || "MP_ITEM_STATUS_UNSPECIFIED"
+    const integrationStatus =
+      item.integration_status || "INTEGRATION_ITEM_STATUS_UNSPECIFIED"
+
+    if (!extractItemNr(item)) {
+      console.error(
+        `[noon-get-order-by-id] Order ${orderId}: item at index ${idx} had no item number in keys [${ITEM_NR_KEYS.join(", ")}]. Generated synthetic mp_item_nr=${mpItemNr}. Item keys: ${JSON.stringify(Object.keys(item))}`
+      )
+    }
+
+    return {
+      mp_item_nr: mpItemNr,
+      fbpi_order_nr: orderId,
+      partner_sku: partnerSku,
+      mp_status: mpStatus,
+      integration_status: integrationStatus,
+      price,
+    }
+  })
+
+  if (rawItems.length === 0) {
+    console.error(
+      `[noon-get-order-by-id] Order ${orderId}: no items array found. Checked keys [${ITEM_ARRAY_KEYS.join(", ")}]. Order keys: ${JSON.stringify(Object.keys(order))}`
+    )
+  }
+
+  const total = items.reduce((sum, item) => sum + item.price, 0)
+
   return {
+    fbpi_order_nr: orderId,
     noon_order_id: orderId,
-    order_date: order.order_created_at ?? null,
-    total_price: calculateOrderTotal(order),
-    customer_country_code: order.customer_country_code ?? null,
-    status: "Fetched",
+    mp_order_nr: typeof order.mp_order_nr === "string" ? order.mp_order_nr : null,
+    warehouse_code: typeof order.warehouse_code === "string" ? order.warehouse_code : null,
+    order_created_at: typeof order.order_created_at === "string" ? order.order_created_at : null,
+    order_date: typeof order.order_created_at === "string" ? order.order_created_at : null,
+    total_price: total,
+    customer_country_code: typeof order.customer_country_code === "string" ? order.customer_country_code : null,
+    status: typeof order.status === "string" ? order.status : "NEW",
     raw_payload: order,
+    items,
   }
 }
 
-async function persistOrder(order: NormalizedOrder): Promise<void> {
-  const { error } = await supabase
-    .from("orders")
-    .upsert(
-      {
-        noon_order_id: order.noon_order_id,
-        order_date: order.order_date,
-        total_price: order.total_price,
-        customer_country_code: order.customer_country_code,
-        status: order.status,
-        raw_payload: order.raw_payload,
-      },
-      { onConflict: "noon_order_id" }
-    )
-
-  if (error) {
-    throw new Error(`Failed to persist order: ${error.message}`)
+/**
+ * Persist the parent order first, then its line items sequentially. The parent
+ * must be committed before items are upserted to satisfy the foreign key.
+ */
+async function persistOrderWithItems(
+  order: NormalizedOrder
+): Promise<{ savedItems: number }> {
+  const orderRow = {
+    fbpi_order_nr: order.fbpi_order_nr,
+    noon_order_id: order.noon_order_id,
+    mp_order_nr: order.mp_order_nr,
+    warehouse_code: order.warehouse_code,
+    order_created_at: order.order_created_at,
+    order_date: order.order_date,
+    total_price: order.total_price,
+    customer_country_code: order.customer_country_code,
+    status: order.status,
+    raw_payload: order.raw_payload,
   }
+
+  const { error: orderError } = await supabase
+    .from("orders")
+    .upsert(orderRow, { onConflict: "fbpi_order_nr" })
+
+  if (orderError) {
+    throw new Error(
+      `Failed to persist order ${order.fbpi_order_nr}: ${orderError.message}`
+    )
+  }
+
+  let savedItems = 0
+  for (const item of order.items) {
+    const { error: itemError } = await supabase
+      .from("order_items")
+      .upsert(
+        {
+          mp_item_nr: item.mp_item_nr,
+          fbpi_order_nr: order.fbpi_order_nr,
+          partner_sku: item.partner_sku,
+          mp_status: item.mp_status,
+          integration_status: item.integration_status,
+          price: item.price,
+        },
+        { onConflict: "mp_item_nr" }
+      )
+
+    if (itemError) {
+      throw new Error(
+        `Failed to persist order item ${item.mp_item_nr}: ${itemError.message}`
+      )
+    }
+    savedItems++
+  }
+
+  return { savedItems }
 }
 
 Deno.serve(async (req: Request) => {
@@ -284,18 +426,22 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    await persistOrder(normalized)
+    const { savedItems } = await persistOrderWithItems(normalized)
 
     return new Response(
       JSON.stringify({
         ok: true,
         data: {
           order: {
+            fbpi_order_nr: normalized.fbpi_order_nr,
             noon_order_id: normalized.noon_order_id,
-            order_date: normalized.order_date,
+            mp_order_nr: normalized.mp_order_nr,
+            warehouse_code: normalized.warehouse_code,
+            order_created_at: normalized.order_created_at,
             total_price: normalized.total_price,
             customer_country_code: normalized.customer_country_code,
             status: normalized.status,
+            item_count: savedItems,
           },
         },
       }),

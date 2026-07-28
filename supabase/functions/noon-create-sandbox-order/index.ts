@@ -185,11 +185,48 @@ Deno.serve(async (req: Request) => {
     }
 
     const responseBody = await callNoonWithRetry(payload) as { fbpi_order_nr?: string }
+    const fbpiOrderNr = responseBody?.fbpi_order_nr
+
+    // Immediately fetch the full order details (with line items) so the test
+    // order is persisted to Supabase with its items before the UI refreshes.
+    // We call the noon-get-order-by-id function in-process so the caller only
+    // needs a single round-trip. Failures here are non-fatal — the order was
+    // still created on Noon — so we surface the order number regardless.
+    let itemCount: number | undefined
+    let fetchError: string | undefined
+    if (fbpiOrderNr) {
+      try {
+        const detailUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/noon-get-order-by-id`
+        const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? ""
+        const detailRes = await fetch(detailUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${anonKey}`,
+            apikey: anonKey,
+          },
+          body: JSON.stringify({ fbpi_order_nr: fbpiOrderNr }),
+        })
+        if (detailRes.ok) {
+          const detailBody = (await detailRes.json()) as {
+            ok: boolean
+            data?: { order?: { item_count?: number } }
+          }
+          if (detailBody.ok && detailBody.data?.order) {
+            itemCount = detailBody.data.order.item_count
+          }
+        }
+      } catch (err) {
+        fetchError = err instanceof Error ? err.message : "Failed to fetch order details"
+      }
+    }
 
     return new Response(
       JSON.stringify({
         ok: true,
-        fbpi_order_nr: responseBody?.fbpi_order_nr,
+        fbpi_order_nr: fbpiOrderNr,
+        item_count: itemCount,
+        fetch_error: fetchError,
         raw: responseBody,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
