@@ -540,10 +540,12 @@ export async function generateNoonAwb(params: {
   qty?: number
 }): Promise<NoonGenerateAwbResult> {
   const result = await callNoonFunction("noon-generate-awbs", params)
-  const data = (result.data ?? {}) as { awb?: string }
+  // The edge function returns `awb` at the top level of the JSON body
+  // (e.g. {"ok": true, "awb": "PH73125070901E"}), not nested under `data`.
+  const awb = (result as { awb?: string }).awb
   return {
     ok: result.ok,
-    awb_nr: data.awb,
+    awb_nr: awb,
     error: result.error,
   }
 }
