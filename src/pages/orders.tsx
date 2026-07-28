@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react"
-import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter } from "lucide-react"
+import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,8 +15,18 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { supabase } from "@/lib/supabase"
-import { syncNoonOrders } from "@/lib/noon"
+import { syncNoonOrders, markItemOos } from "@/lib/noon"
 import type { Order, OrderItem } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -44,6 +54,9 @@ export function OrdersPage() {
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
   const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({})
   const [loadingItems, setLoadingItems] = useState<string | null>(null)
+  const [oosTarget, setOosTarget] = useState<{ fbpi_order_nr: string; mp_item_nr: string } | null>(null)
+  const [markingOos, setMarkingOos] = useState(false)
+  const [oosItemNr, setOosItemNr] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -131,6 +144,65 @@ export function OrdersPage() {
       toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const OOS_BLOCKED_STATUSES = new Set([
+    "OUT_OF_STOCK",
+    "SHIPPED",
+    "CANCELLED",
+    "CANCELLED_BY_CUSTOMER",
+    "DELIVERED",
+    "RETURNED",
+    "REFUNDED",
+  ])
+
+  function canMarkOos(item: OrderItem): boolean {
+    const integration = (item.integration_status ?? "").toUpperCase()
+    const mp = (item.mp_status ?? "").toUpperCase()
+    if (OOS_BLOCKED_STATUSES.has(integration)) return false
+    if (OOS_BLOCKED_STATUSES.has(mp)) return false
+    return true
+  }
+
+  async function handleConfirmMarkOos() {
+    if (!oosTarget) return
+    const { fbpi_order_nr, mp_item_nr } = oosTarget
+
+    setMarkingOos(true)
+    setOosItemNr(mp_item_nr)
+    const toastId = toast.loading("Marking item as Out of Stock on Noon…")
+
+    try {
+      const result = await markItemOos({ fbpi_order_nr, mp_item_nr })
+
+      if (!result.ok) {
+        toast.error(result.error || "Failed to mark item as out of stock", { id: toastId })
+        return
+      }
+
+      toast.success("Item marked as Out of Stock on Noon", { id: toastId })
+
+      // Dynamically update the item's integration_status in local state
+      // without reloading the page.
+      setItemsByOrder((prev) => {
+        const list = prev[fbpi_order_nr]
+        if (!list) return prev
+        return {
+          ...prev,
+          [fbpi_order_nr]: list.map((it) =>
+            it.mp_item_nr === mp_item_nr
+              ? { ...it, integration_status: "OUT_OF_STOCK" }
+              : it
+          ),
+        }
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
+    } finally {
+      setMarkingOos(false)
+      setOosItemNr(null)
+      setOosTarget(null)
     }
   }
 
@@ -535,6 +607,7 @@ export function OrdersPage() {
                                             <TableHead>MP Status</TableHead>
                                             <TableHead>Integration Status</TableHead>
                                             <TableHead className="pr-4 text-right">Price</TableHead>
+                                            <TableHead className="pr-4 text-right">Action</TableHead>
                                           </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -553,7 +626,33 @@ export function OrdersPage() {
                                                 <span className="text-xs">{item.integration_status ?? "—"}</span>
                                               </TableCell>
                                               <TableCell className="pr-4 text-right font-semibold tabular-nums">
-                                                {item.price != null ? `$${Number(item.price).toFixed(2)}` : "—"}
+                                                {item.price != null ? `${Number(item.price).toFixed(2)}` : "—"}
+                                              </TableCell>
+                                              <TableCell className="pr-4 text-right">
+                                                {canMarkOos(item) ? (
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-7 gap-1 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
+                                                    disabled={markingOos && oosItemNr === item.mp_item_nr}
+                                                    onClick={(e) => {
+                                                      e.stopPropagation()
+                                                      setOosTarget({
+                                                        fbpi_order_nr: item.fbpi_order_nr,
+                                                        mp_item_nr: item.mp_item_nr,
+                                                      })
+                                                    }}
+                                                  >
+                                                    {markingOos && oosItemNr === item.mp_item_nr ? (
+                                                      <Loader2 className="size-3 animate-spin" />
+                                                    ) : (
+                                                      <Ban className="size-3" />
+                                                    )}
+                                                    Mark OOS
+                                                  </Button>
+                                                ) : (
+                                                  <span className="text-xs text-muted-foreground">—</span>
+                                                )}
                                               </TableCell>
                                             </TableRow>
                                           ))}
@@ -589,6 +688,46 @@ export function OrdersPage() {
           </Card>
         </>
       )}
+
+      {/* Mark OOS Confirmation Dialog */}
+      <AlertDialog
+        open={oosTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !markingOos) {
+            setOosTarget(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="size-5 text-red-600" />
+              Mark Item as Out of Stock?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to mark this item as Out of Stock? This will
+              cancel it on Noon's side and cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={markingOos}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleConfirmMarkOos()
+              }}
+              disabled={markingOos}
+              className="bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600"
+            >
+              {markingOos ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                "Yes, mark as Out of Stock"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

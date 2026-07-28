@@ -443,3 +443,37 @@ export async function syncNoonOrders(params: {
     error: result.error,
   }
 }
+
+export type NoonMarkOosResult = {
+  ok: boolean
+  fbpi_order_nr?: string
+  mp_item_nr?: string
+  integration_status?: string
+  error?: string
+}
+
+/**
+ * Mark a single order line item as Out of Stock on Noon via the
+ * `noon-mark-item-oos` edge function. The function calls Noon's
+ * `/fbpi/v1/fbpi-order/update` endpoint with the
+ * `UPDATE_ORDER_REQUEST_ITEM_STATUS_OUT_OF_STOCK` status and then updates the
+ * local `order_items` row so the UI reflects the change immediately.
+ */
+export async function markItemOos(params: {
+  fbpi_order_nr: string
+  mp_item_nr: string
+}): Promise<NoonMarkOosResult> {
+  const result = await callNoonFunction("noon-mark-item-oos", params)
+  const data = (result.data ?? {}) as {
+    fbpi_order_nr?: string
+    mp_item_nr?: string
+    integration_status?: string
+  }
+  return {
+    ok: result.ok,
+    fbpi_order_nr: data.fbpi_order_nr,
+    mp_item_nr: data.mp_item_nr,
+    integration_status: data.integration_status,
+    error: result.error,
+  }
+}
