@@ -273,3 +273,17 @@ export async function createNoonSandboxOrder(params: {
   const data = (result.data ?? {}) as { fbpi_order_nr?: string }
   return { ok: result.ok, fbpi_order_nr: data.fbpi_order_nr, error: result.error }
 }
+
+export type NoonGetOrderResult = {
+  ok: boolean
+  order?: NoonFetchedOrder
+  error?: string
+}
+
+export async function fetchNoonOrderById(params: {
+  fbpi_order_nr: string
+}): Promise<NoonGetOrderResult> {
+  const result = await callNoonFunction("noon-get-order-by-id", params)
+  const data = (result.data ?? {}) as { order?: NoonFetchedOrder }
+  return { ok: result.ok, order: data.order, error: result.error }
+}

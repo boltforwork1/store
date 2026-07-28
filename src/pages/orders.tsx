@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Search, ListFilter as Filter, Download, Eye, MoveHorizontal as MoreHorizontal, ChevronLeft, ChevronRight, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, FlaskConical } from "lucide-react"
+import { Search, ListFilter as Filter, Download, Eye, MoveHorizontal as MoreHorizontal, ChevronLeft, ChevronRight, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, FlaskConical, Hash } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
-import { fetchNoonOrdersApi, createNoonSandboxOrder, INVALID_WAREHOUSE_CODE_MESSAGE, WAREHOUSE_CODE_REGEX } from "@/lib/noon"
+import { fetchNoonOrdersApi, createNoonSandboxOrder, fetchNoonOrderById, INVALID_WAREHOUSE_CODE_MESSAGE, WAREHOUSE_CODE_REGEX } from "@/lib/noon"
 import { cn } from "@/lib/utils"
 
 type OrderRow = {
@@ -55,6 +55,10 @@ export function OrdersPage() {
 
   // Fetch form state
   const [warehouseCode, setWarehouseCode] = useState("")
+
+  // Fetch-by-ID form state
+  const [orderIdInput, setOrderIdInput] = useState("")
+  const [fetchingById, setFetchingById] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -104,6 +108,36 @@ export function OrdersPage() {
       toast.error(error instanceof Error ? error.message : String(error), { id: toastId })
     } finally {
       setCreatingOrder(false)
+    }
+  }
+
+  async function handleFetchOrderById(e: React.FormEvent) {
+    e.preventDefault()
+
+    const orderId = orderIdInput.trim()
+    if (!orderId) {
+      toast.error("Order ID is required")
+      return
+    }
+
+    setFetchingById(true)
+    const toastId = toast.loading(`Fetching order ${orderId} from Noon…`)
+
+    try {
+      const result = await fetchNoonOrderById({ fbpi_order_nr: orderId })
+
+      if (!result.ok || !result.order) {
+        toast.error(result.error || "Failed to fetch order", { id: toastId })
+        return
+      }
+
+      toast.success(`Order ${result.order.noon_order_id} fetched and added`, { id: toastId })
+      setOrderIdInput("")
+      await load()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error), { id: toastId })
+    } finally {
+      setFetchingById(false)
     }
   }
 
@@ -320,6 +354,45 @@ export function OrdersPage() {
                 {creatingOrder ? "Creating…" : "Create Test Order"}
               </Button>
             </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Fetch Order by ID */}
+      <Card>
+        <CardHeader className="pb-4">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Hash className="size-4 text-muted-foreground" />
+              Fetch Order by ID
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Sandbox orders may not appear in the list endpoint. Fetch a specific
+              order directly by its FBPI order number to view it on your dashboard.
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleFetchOrderById} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-1.5">
+              <Label htmlFor="order-id-input">FBPI Order Number</Label>
+              <Input
+                id="order-id-input"
+                placeholder="e.g. TEST-STR41759-SVWHizmZVI-IO-1"
+                value={orderIdInput}
+                onChange={(e) => setOrderIdInput(e.target.value)}
+                className="bg-background"
+                disabled={fetchingById}
+              />
+            </div>
+            <Button type="submit" disabled={fetchingById} className="gap-1.5 sm:w-auto">
+              {fetchingById ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Search className="size-3.5" />
+              )}
+              {fetchingById ? "Fetching…" : "Fetch Order"}
+            </Button>
           </form>
         </CardContent>
       </Card>
