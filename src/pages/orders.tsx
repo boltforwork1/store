@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react"
-import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, AlertTriangle, Truck, PackageCheck } from "lucide-react"
+import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, AlertTriangle, Truck, PackageCheck, Wrench } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { supabase } from "@/lib/supabase"
-import { syncNoonOrders, markItemOos, createNoonShipment } from "@/lib/noon"
+import { syncNoonOrders, markItemOos, createNoonShipment, createNoonSandboxOrder } from "@/lib/noon"
 import type { Order, OrderItem } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -56,6 +56,7 @@ type OrderWithItemCount = Order & { item_count: number }
 export function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [creatingTestOrder, setCreatingTestOrder] = useState(false)
   const [orders, setOrders] = useState<OrderWithItemCount[]>([])
   const [activeTab, setActiveTab] = useState("all")
   const [search, setSearch] = useState("")
@@ -126,17 +127,14 @@ export function OrdersPage() {
     load()
   }, [load])
 
-  async function handleSyncOrders(e: React.FormEvent) {
-    e.preventDefault()
-
-    const warehouse = warehouseCode.trim()
+  async function runSyncOrders(warehouse: string, loadingLabel = "Syncing orders from Noon…") {
     if (!warehouse) {
       toast.error("Warehouse code is required")
       return
     }
 
     setSyncing(true)
-    const toastId = toast.loading("Syncing orders from Noon…")
+    const toastId = toast.loading(loadingLabel)
 
     try {
       const result = await syncNoonOrders({ warehouse_code: warehouse })
@@ -157,6 +155,35 @@ export function OrdersPage() {
       toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
     } finally {
       setSyncing(false)
+    }
+  }
+
+  function handleSyncOrders(e: React.FormEvent) {
+    e.preventDefault()
+    void runSyncOrders(warehouseCode.trim())
+  }
+
+  async function handleCreateTestOrder() {
+    const warehouse = warehouseCode.trim() || "W00210108EG"
+
+    setCreatingTestOrder(true)
+    const toastId = toast.loading("Creating test order in Noon sandbox…")
+
+    try {
+      const result = await createNoonSandboxOrder({ warehouse_code: warehouse })
+
+      if (!result.ok || !result.fbpi_order_nr) {
+        toast.error(result.error || "Failed to create test order", { id: toastId })
+        return
+      }
+
+      toast.success(`Test Order created! Syncing…`, { id: toastId })
+      // Immediately sync to pull the newly created order into the local DB.
+      await runSyncOrders(warehouse, "Syncing the new test order…")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
+    } finally {
+      setCreatingTestOrder(false)
     }
   }
 
@@ -525,16 +552,30 @@ export function OrdersPage() {
                 value={warehouseCode}
                 onChange={(e) => setWarehouseCode(e.target.value)}
                 className="bg-background"
-                disabled={syncing}
+                disabled={syncing || creatingTestOrder}
               />
             </div>
-            <Button type="submit" disabled={syncing} className="gap-1.5 sm:w-auto">
+            <Button type="submit" disabled={syncing || creatingTestOrder} className="gap-1.5 sm:w-auto">
               {syncing ? (
                 <Loader2 className="size-3.5 animate-spin" />
               ) : (
                 <RefreshCw className="size-3.5" />
               )}
               {syncing ? "Syncing…" : "Sync Orders"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={syncing || creatingTestOrder}
+              onClick={handleCreateTestOrder}
+              className="gap-1.5 sm:w-auto"
+            >
+              {creatingTestOrder ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Wrench className="size-3.5" />
+              )}
+              {creatingTestOrder ? "Creating…" : "Create Test Order"}
             </Button>
           </form>
         </CardContent>

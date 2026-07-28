@@ -13,15 +13,9 @@ const INVALID_WAREHOUSE_CODE_MESSAGE =
 
 const USER_AGENT = "NexCommerce/1.0.0"
 
-const CHARSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-function randomIdempotencyKey(length = 10): string {
-  const values = new Uint8Array(length)
-  crypto.getRandomValues(values)
-  let out = ""
-  for (let i = 0; i < length; i++) {
-    out += CHARSET[values[i] % CHARSET.length]
-  }
-  return out
+// Random idempotency key, unique and max 10 characters.
+function randomIdempotencyKey(): string {
+  return Math.random().toString(36).substring(2, 10)
 }
 
 async function getSessionCookie(force = false): Promise<string> {
@@ -156,18 +150,17 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const DEFAULT_WAREHOUSE_CODE = "W00210108EG"
+
     const parsed = (await req.json().catch(() => ({}))) as {
       warehouse_code?: string
     }
 
-    if (!parsed.warehouse_code || typeof parsed.warehouse_code !== "string") {
-      return new Response(
-        JSON.stringify({ ok: false, error: "`warehouse_code` is required." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      )
-    }
+    const trimmedWarehouseCode =
+      typeof parsed.warehouse_code === "string" && parsed.warehouse_code.trim() !== ""
+        ? parsed.warehouse_code.trim()
+        : DEFAULT_WAREHOUSE_CODE
 
-    const trimmedWarehouseCode = parsed.warehouse_code.trim()
     if (!WAREHOUSE_CODE_REGEX.test(trimmedWarehouseCode)) {
       return new Response(
         JSON.stringify({ ok: false, error: INVALID_WAREHOUSE_CODE_MESSAGE }),
@@ -177,12 +170,16 @@ Deno.serve(async (req: Request) => {
 
     const payload = {
       warehouse_code: trimmedWarehouseCode,
-      idempotency_key: randomIdempotencyKey(10),
+      idempotency_key: randomIdempotencyKey(),
       country_code: "eg",
       items: [
         {
           status: "MP_ITEM_STATUS_CONFIRMED",
-          partner_sku: "TEST-SKU-001",
+          partner_sku: "TEST-SKU-01",
+        },
+        {
+          status: "MP_ITEM_STATUS_CONFIRMED",
+          partner_sku: "TEST-SKU-02",
         },
       ],
     }
