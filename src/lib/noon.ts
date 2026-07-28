@@ -536,8 +536,8 @@ export type NoonGenerateAwbResult = {
  * AWB and will reject dummy/auto-generated values.
  */
 export async function generateNoonAwb(params: {
-  warehouse_code: string
-  courier?: string
+  country_code: string
+  qty?: number
 }): Promise<NoonGenerateAwbResult> {
   const result = await callNoonFunction("noon-generate-awbs", params)
   const data = (result.data ?? {}) as { awb_nr?: string }

@@ -5,7 +5,7 @@ const corsHeaders = {
 }
 
 const NOON_GENERATE_AWBS_URL =
-  "https://noon-api-gateway.noon.partners/fbpi/v1/awbs/generate"
+  "https://noon-api-gateway.noon.partners/fbpi/v1/shipment/noon-logistics-awbs/get"
 
 // Per the Noon Partner API spec, ALL requests must include a User-Agent header
 // identifying the application. Requests without it may be rejected.
@@ -158,34 +158,27 @@ Deno.serve(async (req: Request) => {
 
   try {
     const parsed = (await req.json().catch(() => ({}))) as {
-      warehouse_code?: string
-      courier?: string
-      count?: number
+      country_code?: string
+      qty?: number
     }
 
-    const warehouseCode =
-      typeof parsed.warehouse_code === "string" ? parsed.warehouse_code.trim() : ""
-    if (!warehouseCode) {
+    const countryCode =
+      typeof parsed.country_code === "string" ? parsed.country_code.trim().toLowerCase() : ""
+    if (!countryCode) {
       return new Response(
-        JSON.stringify({ ok: false, error: "`warehouse_code` is required." }),
+        JSON.stringify({ ok: false, error: "`country_code` is required." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }
 
-    const courier =
-      typeof parsed.courier === "string" && parsed.courier.trim() !== ""
-        ? parsed.courier.trim()
-        : "noon"
-
-    const count =
-      typeof parsed.count === "number" && parsed.count > 0
-        ? Math.min(parsed.count, 100)
+    const qty =
+      typeof parsed.qty === "number" && parsed.qty > 0
+        ? Math.min(parsed.qty, 100)
         : 1
 
     const payload = {
-      warehouse_code: warehouseCode,
-      courier,
-      count,
+      country_code: countryCode,
+      qty,
     }
 
     // 1. Call the Noon GenerateAwbs API.

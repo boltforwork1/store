@@ -248,9 +248,9 @@ export function OrdersPage() {
 
   async function handleGetNoonAwb() {
     if (!shipmentTarget) return
-    const warehouse = (shipmentTarget.warehouse_code ?? warehouseCode).trim()
-    if (!warehouse) {
-      toast.error("Warehouse code is required to generate an AWB")
+    const countryCode = (shipmentTarget.customer_country_code ?? "").trim()
+    if (!countryCode) {
+      toast.error("Customer country code is required to generate an AWB")
       return
     }
 
@@ -258,7 +258,7 @@ export function OrdersPage() {
     const toastId = toast.loading("Generating AWB from Noon…")
 
     try {
-      const result = await generateNoonAwb({ warehouse_code: warehouse })
+      const result = await generateNoonAwb({ country_code: countryCode })
       if (!result.ok || !result.awb_nr) {
         toast.error(result.error || "Failed to generate AWB", { id: toastId })
         return
