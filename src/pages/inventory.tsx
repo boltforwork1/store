@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Package2, Warehouse, RefreshCw, Search, Loader as Loader2, Check, X, PackageSearch, DatabaseZap } from "lucide-react"
+import { Package2, Warehouse, RefreshCw, Search, Loader as Loader2, Check, X, PackageSearch, DatabaseZap, Tags } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { supabase } from "@/lib/supabase"
-import { fetchNoonStock, updateNoonStock, syncNoonInventory } from "@/lib/noon"
+import { fetchNoonStock, updateNoonStock, syncNoonInventory, syncNoonPricing } from "@/lib/noon"
 import { cn } from "@/lib/utils"
 
 type InventoryRow = {
@@ -58,6 +58,10 @@ export function InventoryPage() {
   // Bulk inventory sync state
   const [syncWarehouse, setSyncWarehouse] = useState("")
   const [syncing, setSyncing] = useState(false)
+
+  // Bulk pricing sync state
+  const [syncCountry, setSyncCountry] = useState("eg")
+  const [syncingPrices, setSyncingPrices] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -194,6 +198,41 @@ export function InventoryPage() {
     setLookupSku("")
     setLookupResult(null)
     setNewQty("")
+  }
+
+  async function handleSyncPricing(e: React.FormEvent) {
+    e.preventDefault()
+
+    const countryCode = syncCountry.trim().toLowerCase()
+    if (!countryCode) {
+      toast.error("Country code is required")
+      return
+    }
+
+    setSyncingPrices(true)
+    const toastId = toast.loading(`Syncing prices from Noon for country ${countryCode.toUpperCase()}…`)
+
+    try {
+      const result = await syncNoonPricing({ country_code: countryCode })
+
+      if (!result.ok) {
+        toast.error(result.error ?? "Failed to sync prices", { id: toastId })
+        return
+      }
+
+      const total = result.total_products ?? 0
+      const synced = result.synced ?? 0
+      toast.success(
+        `Successfully synced prices for ${total} products (${synced} prices retrieved from Noon)`,
+        { id: toastId }
+      )
+      await load()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unexpected error"
+      toast.error(message, { id: toastId })
+    } finally {
+      setSyncingPrices(false)
+    }
   }
 
   async function handleSyncInventory(e: React.FormEvent) {
@@ -374,6 +413,50 @@ export function InventoryPage() {
                 <>
                   <RefreshCw className="size-3.5" />
                   Sync Inventory
+                </>
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Noon Pricing Sync (bulk) */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Tags className="size-4 text-muted-foreground" />
+            Noon Pricing Sync
+          </CardTitle>
+          <CardDescription>
+            Pull live prices from Noon for all your products at once. Enter the country code
+            (e.g. eg, sa, ae) and click Sync Prices — every SKU will be updated with its
+            current selling price from Noon.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSyncPricing} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="sync-country">Country code</Label>
+              <Input
+                id="sync-country"
+                placeholder="e.g. eg"
+                value={syncCountry}
+                onChange={(e) => setSyncCountry(e.target.value)}
+                disabled={syncingPrices}
+                required
+                className="bg-background"
+              />
+            </div>
+            <Button type="submit" disabled={syncingPrices} className="gap-1.5 sm:w-auto">
+              {syncingPrices ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Syncing…
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="size-3.5" />
+                  Sync Prices
                 </>
               )}
             </Button>
