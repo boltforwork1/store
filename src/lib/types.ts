@@ -7,6 +7,7 @@ export type Product = {
   stock_qty: number
   delivery_mode: string
   is_active: boolean
+  image_url: string | null
 }
 
 export type OrderStatus = "Pending" | "Acknowledged" | "Shipped"

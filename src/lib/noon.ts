@@ -351,3 +351,29 @@ export async function syncNoonInventory(params: {
     error: result.error,
   }
 }
+
+export type NoonCatalogSyncResult = {
+  ok: boolean
+  total_products?: number
+  synced?: number
+  updated?: number
+  error?: string
+}
+
+export async function syncNoonCatalog(params?: {
+  limit?: number
+}): Promise<NoonCatalogSyncResult> {
+  const result = await callNoonFunction("noon-sync-catalog", params ?? {})
+  const data = (result.data ?? {}) as {
+    total_products?: number
+    synced?: number
+    updated?: number
+  }
+  return {
+    ok: result.ok,
+    total_products: data.total_products,
+    synced: data.synced,
+    updated: data.updated,
+    error: result.error,
+  }
+}

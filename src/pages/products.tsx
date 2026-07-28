@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Plus, Search, ListFilter as Filter, MoveHorizontal as MoreHorizontal, Package, Upload, FileSpreadsheet, Loader as Loader2, X } from "lucide-react"
+import { Plus, Search, ListFilter as Filter, MoveHorizontal as MoreHorizontal, Package, Upload, FileSpreadsheet, Loader as Loader2, X, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { supabase } from "@/lib/supabase"
-import { importCatalogFromFile } from "@/lib/noon"
+import { importCatalogFromFile, syncNoonCatalog } from "@/lib/noon"
 import type { Product } from "@/lib/types"
 
 type DisplayProduct = {
@@ -21,6 +21,7 @@ type DisplayProduct = {
   price: string
   stock: number
   status: string
+  image_url: string | null
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -43,6 +44,7 @@ function toDisplayProduct(row: Product): DisplayProduct {
     price: row.price != null ? `${Number(row.price).toFixed(2)}` : "—",
     stock: row.stock_qty ?? 0,
     status: row.is_active === false ? "Discontinued" : deriveStatus(row.stock_qty ?? 0),
+    image_url: row.image_url ?? null,
   }
 }
 
@@ -50,6 +52,7 @@ export function ProductsPage() {
   const [products, setProducts] = useState<DisplayProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [importing, setImporting] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [search, setSearch] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -58,7 +61,7 @@ export function ProductsPage() {
     setLoading(true)
     const { data, error } = await supabase
       .from("products")
-      .select("id, partner_sku, name, price, msrp, stock_qty, delivery_mode, is_active")
+      .select("id, partner_sku, name, price, msrp, stock_qty, delivery_mode, is_active, image_url")
       .order("created_at", { ascending: false })
 
     if (error) {
@@ -101,6 +104,36 @@ export function ProductsPage() {
 
     setImporting(false)
     if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  async function handleSyncCatalog() {
+    setSyncing(true)
+    const toastId = toast.loading("Syncing catalog details from Noon…")
+
+    try {
+      const result = await syncNoonCatalog({ limit: 30 })
+
+      if (!result.ok) {
+        toast.error(result.error ?? "Failed to sync catalog", { id: toastId })
+        return
+      }
+
+      const synced = result.synced ?? 0
+      const total = result.total_products ?? 0
+
+      if (total === 0) {
+        toast.info("All products already have catalog details — nothing to sync.", { id: toastId })
+      } else {
+        toast.success(`Successfully synced catalog data for ${synced} of ${total} products`, { id: toastId })
+      }
+
+      await loadProducts()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unexpected error"
+      toast.error(message, { id: toastId })
+    } finally {
+      setSyncing(false)
+    }
   }
 
   function onDrop(e: React.DragEvent<HTMLDivElement>) {
@@ -149,7 +182,7 @@ export function ProductsPage() {
             size="sm"
             className="gap-1.5"
             onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
+            disabled={importing || syncing}
           >
             {importing ? (
               <Loader2 className="size-3.5 animate-spin" />
@@ -157,6 +190,20 @@ export function ProductsPage() {
               <Upload className="size-3.5" />
             )}
             {importing ? "Importing…" : "Import CSV"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={handleSyncCatalog}
+            disabled={syncing || importing}
+          >
+            {syncing ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3.5" />
+            )}
+            {syncing ? "Syncing…" : "Sync Catalog"}
           </Button>
           <Button size="sm" className="gap-1.5">
             <Plus className="size-3.5" />
@@ -190,7 +237,7 @@ export function ProductsPage() {
           onDrop={onDrop}
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
-          onClick={() => !importing && fileInputRef.current?.click()}
+          onClick={() => !importing && !syncing && fileInputRef.current?.click()}
           className={cn(
             "flex flex-col items-center justify-center gap-3 px-6 py-10 text-center transition-colors",
             !importing && "cursor-pointer"
@@ -226,7 +273,7 @@ export function ProductsPage() {
               the file here to sync your products.
             </p>
           </div>
-          {!importing && (
+          {!importing && !syncing && (
             <Button
               variant="outline"
               size="sm"
@@ -299,9 +346,28 @@ export function ProductsPage() {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {filtered.map((product) => (
             <Card key={product.id} className="group relative overflow-hidden transition-shadow hover:shadow-md">
-              {/* Product thumbnail placeholder */}
-              <div className="flex h-36 items-center justify-center bg-muted/50">
-                <Package className="size-12 text-muted-foreground/30" />
+              {/* Product thumbnail */}
+              <div className="relative h-36 w-full overflow-hidden bg-muted/50">
+                {product.image_url ? (
+                  <img
+                    src={product.image_url}
+                    alt={product.name}
+                    loading="lazy"
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    onError={(e) => {
+                      const target = e.currentTarget
+                      target.style.display = "none"
+                      const fallback = target.nextElementSibling
+                      if (fallback) (fallback as HTMLElement).style.display = "flex"
+                    }}
+                  />
+                ) : null}
+                <div
+                  className="flex h-full w-full items-center justify-center"
+                  style={product.image_url ? { display: "none" } : undefined}
+                >
+                  <Package className="size-12 text-muted-foreground/30" />
+                </div>
               </div>
               <CardHeader className="pb-2 pt-4">
                 <div className="flex items-start justify-between gap-2">
