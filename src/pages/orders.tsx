@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react"
-import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, TriangleAlert as AlertTriangle, Truck, PackageCheck, Wrench, Printer } from "lucide-react"
+import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, TriangleAlert as AlertTriangle, Truck, PackageCheck, Wrench, Printer, X } from "lucide-react"
+import { ShippingLabel } from "@/components/shipping-label"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -35,7 +36,7 @@ import {
 } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { supabase } from "@/lib/supabase"
-import { syncNoonOrders, markItemOos, createNoonShipment, createNoonSandboxOrder, printNoonLabel, cancelNoonShipment } from "@/lib/noon"
+import { syncNoonOrders, markItemOos, createNoonShipment, createNoonSandboxOrder, cancelNoonShipment } from "@/lib/noon"
 import type { Order, OrderItem } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -71,7 +72,7 @@ export function OrdersPage() {
   const [shipmentAwb, setShipmentAwb] = useState("")
   const [shipmentSelectedItems, setShipmentSelectedItems] = useState<Set<string>>(new Set())
   const [creatingShipment, setCreatingShipment] = useState(false)
-  const [printingLabel, setPrintingLabel] = useState<string | null>(null)
+  const [labelTarget, setLabelTarget] = useState<OrderWithItemCount | null>(null)
   const [cancelTarget, setCancelTarget] = useState<OrderWithItemCount | null>(null)
   const [cancellingShipment, setCancellingShipment] = useState(false)
 
@@ -368,27 +369,13 @@ export function OrdersPage() {
     }
   }
 
-  async function handlePrintLabel(order: OrderWithItemCount) {
-    if (!order.fbpi_order_nr) return
-    setPrintingLabel(order.fbpi_order_nr)
-    const toastId = toast.loading("Fetching shipping label from Noon…")
-    try {
-      const result = await printNoonLabel(order.fbpi_order_nr, order.awb_nr ?? undefined)
-      if (!result.ok) {
-        toast.error(result.error || "Failed to fetch shipping label", { id: toastId })
-        return
-      }
-      if (result.label_url) {
-        window.open(result.label_url, "_blank", "noopener,noreferrer")
-        toast.success("Shipping label opened in a new tab", { id: toastId })
-      } else {
-        toast.success("Label request sent to Noon", { id: toastId })
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
-    } finally {
-      setPrintingLabel(null)
-    }
+  function handlePrintLabel(order: OrderWithItemCount) {
+    if (!order.awb_nr) return
+    setLabelTarget(order)
+  }
+
+  function handlePrint() {
+    window.print()
   }
 
   async function handleCancelShipment() {
@@ -871,17 +858,12 @@ export function OrdersPage() {
                                           variant="outline"
                                           size="sm"
                                           className="h-7 gap-1"
-                                          disabled={printingLabel === order.fbpi_order_nr}
                                           onClick={(e) => {
                                             e.stopPropagation()
                                             handlePrintLabel(order)
                                           }}
                                         >
-                                          {printingLabel === order.fbpi_order_nr ? (
-                                            <Loader2 className="size-3 animate-spin" />
-                                          ) : (
-                                            <Printer className="size-3" />
-                                          )}
+                                          <Printer className="size-3" />
                                           Print Label
                                         </Button>
                                       )}
@@ -990,6 +972,37 @@ export function OrdersPage() {
             </div>
           </Card>
         </>
+      )}
+
+      {/* Print Label Dialog */}
+      {labelTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 print:static print:bg-transparent print:p-0">
+          <div className="relative max-h-[90vh] overflow-auto bg-white p-4 print:overflow-visible print:p-0">
+            <div className="mb-3 flex items-center justify-between print:hidden">
+              <h2 className="text-lg font-semibold">Shipping Label Preview</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setLabelTarget(null)}
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+            <ShippingLabel
+              order={labelTarget}
+              items={itemsByOrder[labelTarget.fbpi_order_nr ?? ""] ?? []}
+            />
+            <div className="mt-4 flex justify-end gap-2 print:hidden">
+              <Button variant="outline" onClick={() => setLabelTarget(null)}>
+                Close
+              </Button>
+              <Button onClick={handlePrint}>
+                <Printer className="size-4" />
+                Print
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Cancel Shipment Confirmation Dialog */}
