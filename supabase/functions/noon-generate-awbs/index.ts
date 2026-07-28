@@ -107,20 +107,29 @@ async function callNoonGenerateAwbs(
 }
 
 /**
- * Extract the generated AWB number from the Noon response. The response may
- * nest the AWB under `data`/`result`/`awbs`. Each AWB entry typically has an
- * `awb_nr` field. We return the first non-empty value we find.
+ * Extract the generated AWB number from the Noon response. The success
+ * schema returns an array of strings under `awb_nrs`, e.g.
+ * `{ "awb_nrs": ["AWB-123456789"] }`. We return the first non-empty value.
  */
 function extractAwbNr(body: unknown): string | null {
   if (!body || typeof body !== "object") return null
   const obj = body as Record<string, unknown>
 
-  // Direct top-level field.
+  // Top-level `awb_nrs` array (documented schema).
+  if (Array.isArray(obj.awb_nrs) && obj.awb_nrs.length > 0) {
+    for (const entry of obj.awb_nrs) {
+      if (typeof entry === "string" && entry.trim() !== "") {
+        return entry.trim()
+      }
+    }
+  }
+
+  // Direct top-level scalar field.
   if (typeof obj.awb_nr === "string" && obj.awb_nr.trim() !== "") {
     return obj.awb_nr.trim()
   }
 
-  // Search nested candidates.
+  // Search nested candidates for legacy/alternate shapes.
   const candidates: Record<string, unknown>[] = [obj]
   for (const key of ["data", "result", "awbs", "awb"]) {
     const nested = obj[key]
@@ -130,11 +139,16 @@ function extractAwbNr(body: unknown): string | null {
   }
 
   for (const candidate of candidates) {
-    // Single AWB object.
+    if (Array.isArray(candidate.awb_nrs) && candidate.awb_nrs.length > 0) {
+      for (const entry of candidate.awb_nrs) {
+        if (typeof entry === "string" && entry.trim() !== "") {
+          return entry.trim()
+        }
+      }
+    }
     if (typeof candidate.awb_nr === "string" && candidate.awb_nr.trim() !== "") {
       return candidate.awb_nr.trim()
     }
-    // Array of AWB objects.
     const awbsArray = candidate.awbs
     if (Array.isArray(awbsArray) && awbsArray.length > 0) {
       for (const entry of awbsArray) {
@@ -224,7 +238,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         ok: true,
-        data: { awb_nr: awbNr },
+        awb: awbNr,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )

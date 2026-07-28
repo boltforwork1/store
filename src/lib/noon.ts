@@ -540,10 +540,10 @@ export async function generateNoonAwb(params: {
   qty?: number
 }): Promise<NoonGenerateAwbResult> {
   const result = await callNoonFunction("noon-generate-awbs", params)
-  const data = (result.data ?? {}) as { awb_nr?: string }
+  const data = (result.data ?? {}) as { awb?: string }
   return {
     ok: result.ok,
-    awb_nr: data.awb_nr,
+    awb_nr: data.awb,
     error: result.error,
   }
 }
