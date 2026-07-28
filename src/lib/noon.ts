@@ -266,8 +266,15 @@ export async function createNoonSandboxOrder(params?: {
   warehouse_code?: string
 }): Promise<NoonSandboxOrderResult> {
   const result = await callNoonFunction("noon-create-sandbox-order", params ?? {})
-  const data = (result.data ?? {}) as { fbpi_order_nr?: string }
-  return { ok: result.ok, fbpi_order_nr: data.fbpi_order_nr, error: result.error }
+  // The edge function returns `fbpi_order_nr` at the top level of its JSON
+  // body (not nested under `data`), so read it directly from `result`.
+  const body = result as { fbpi_order_nr?: string }
+  const nested = (result.data ?? {}) as { fbpi_order_nr?: string }
+  return {
+    ok: result.ok,
+    fbpi_order_nr: body.fbpi_order_nr ?? nested.fbpi_order_nr,
+    error: result.error,
+  }
 }
 
 export type NoonGetOrderResult = {

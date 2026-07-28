@@ -20,6 +20,11 @@ const supabase = createClient(
 
 type NoonOrderItem = {
   mp_item_nr?: string
+  item_nr?: string
+  mp_item_number?: string
+  fbpi_item_nr?: string
+  noon_item_nr?: string
+  item_id?: string
   partner_sku?: string
   mp_status?: string
   integration_status?: string
@@ -34,6 +39,9 @@ type NoonOrder = {
   order_created_at?: string
   status?: string
   items?: NoonOrderItem[]
+  order_items?: NoonOrderItem[]
+  line_items?: NoonOrderItem[]
+  order_lines?: NoonOrderItem[]
   [key: string]: unknown
 }
 
@@ -198,14 +206,63 @@ type NormalizedOrderItem = {
   price: number
 }
 
+// Noon may return the line items under any of these keys depending on the
+// endpoint and response shape.
+const ITEM_ARRAY_KEYS = [
+  "items",
+  "order_items",
+  "line_items",
+  "order_lines",
+] as const
+
+// Noon may use different field names for the marketplace item number.
+const ITEM_NR_KEYS = [
+  "mp_item_nr",
+  "item_nr",
+  "mp_item_number",
+  "fbpi_item_nr",
+  "noon_item_nr",
+  "item_id",
+] as const
+
+function extractItemsArray(order: NoonOrder): NoonOrderItem[] {
+  for (const key of ITEM_ARRAY_KEYS) {
+    const candidate = (order as Record<string, unknown>)[key]
+    if (Array.isArray(candidate)) {
+      return candidate as NoonOrderItem[]
+    }
+  }
+  return []
+}
+
+function extractItemNr(item: NoonOrderItem): string | null {
+  for (const key of ITEM_NR_KEYS) {
+    const val = (item as Record<string, unknown>)[key]
+    if (typeof val === "string" && val.trim() !== "") {
+      return val.trim()
+    }
+    if (typeof val === "number" && val > 0) {
+      return String(val)
+    }
+  }
+  return null
+}
+
 function normalizeOrder(order: NoonOrder): NormalizedOrder | null {
   const orderId = order.fbpi_order_nr
   if (!orderId || typeof orderId !== "string") return null
 
-  const items: NormalizedOrderItem[] = (Array.isArray(order.items) ? order.items : [])
-    .map((item) => {
-      const mpItemNr = typeof item.mp_item_nr === "string" ? item.mp_item_nr.trim() : ""
-      if (!mpItemNr) return null
+  const rawItems = extractItemsArray(order)
+
+  const items: NormalizedOrderItem[] = rawItems
+    .map((item, idx) => {
+      const mpItemNr = extractItemNr(item)
+      if (!mpItemNr) {
+        console.error(
+          `[noon-sync-orders] Order ${orderId}: item at index ${idx} skipped — no item number found in keys [${ITEM_NR_KEYS.join(", ")}]. Item keys: ${JSON.stringify(Object.keys(item))}`
+        )
+        return null
+      }
       return {
         mp_item_nr: mpItemNr,
         fbpi_order_nr: orderId,
@@ -216,6 +273,12 @@ function normalizeOrder(order: NoonOrder): NormalizedOrder | null {
       }
     })
     .filter((it): it is NormalizedOrderItem => it !== null)
+
+  if (rawItems.length > 0 && items.length === 0) {
+    console.error(
+      `[noon-sync-orders] Order ${orderId}: ${rawItems.length} raw item(s) found but ALL were filtered out. Checked array keys [${ITEM_ARRAY_KEYS.join(", ")}] and item-nr keys [${ITEM_NR_KEYS.join(", ")}.`
+    )
+  }
 
   return {
     fbpi_order_nr: orderId,
@@ -265,12 +328,19 @@ async function persistOrderItems(orders: NormalizedOrder[]): Promise<void> {
   const allItems = orders.flatMap((o) => o.items)
   if (allItems.length === 0) return
 
-  const { error } = await supabase
-    .from("order_items")
-    .upsert(allItems, { onConflict: "mp_item_nr" })
+  for (const item of allItems) {
+    const { error } = await supabase
+      .from("order_items")
+      .upsert(item, { onConflict: "mp_item_nr" })
 
-  if (error) {
-    throw new Error(`Failed to persist order items: ${error.message}`)
+    if (error) {
+      console.error(
+        `[noon-sync-orders] Failed to upsert order item mp_item_nr=${item.mp_item_nr} ` +
+        `fbpi_order_nr=${item.fbpi_order_nr}: ${error.message} ` +
+        `(code=${error.code ?? "unknown"}, details=${error.details ?? "none"})`
+      )
+      throw new Error(`Failed to persist order item ${item.mp_item_nr}: ${error.message}`)
+    }
   }
 }
 
