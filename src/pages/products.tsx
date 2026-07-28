@@ -1,16 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Plus, Search, ListFilter as Filter, MoveHorizontal as MoreHorizontal, Package, Upload, FileSpreadsheet, Loader as Loader2, X, RefreshCw } from "lucide-react"
+import { Plus, Search, ListFilter as Filter, Package, Upload, FileSpreadsheet, Loader as Loader2, X, RefreshCw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Label } from "@/components/ui/label"
 import { supabase } from "@/lib/supabase"
 import { importCatalogFromFile, syncNoonCatalog } from "@/lib/noon"
 import type { Product } from "@/lib/types"
@@ -55,6 +68,12 @@ export function ProductsPage() {
   const [syncing, setSyncing] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [search, setSearch] = useState("")
+  const [addOpen, setAddOpen] = useState(false)
+  const [addSku, setAddSku] = useState("")
+  const [addName, setAddName] = useState("")
+  const [adding, setAdding] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<DisplayProduct | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadProducts = useCallback(async () => {
@@ -104,6 +123,55 @@ export function ProductsPage() {
 
     setImporting(false)
     if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  async function handleAddProduct(e: React.FormEvent) {
+    e.preventDefault()
+    const sku = addSku.trim()
+    if (!sku) {
+      toast.error("Partner SKU is required")
+      return
+    }
+
+    setAdding(true)
+    const { error } = await supabase.from("products").insert({
+      partner_sku: sku,
+      name: addName.trim() || null,
+    })
+
+    if (error) {
+      toast.error("Failed to add product: " + error.message)
+      setAdding(false)
+      return
+    }
+
+    toast.success(`Product "${sku}" added successfully`)
+    setAddSku("")
+    setAddName("")
+    setAddOpen(false)
+    setAdding(false)
+    await loadProducts()
+  }
+
+  async function handleDeleteProduct() {
+    if (!deleteTarget) return
+    setDeleting(true)
+
+    const { error } = await supabase
+      .from("products")
+      .delete()
+      .eq("partner_sku", deleteTarget.id)
+
+    if (error) {
+      toast.error("Failed to delete product: " + error.message)
+      setDeleting(false)
+      return
+    }
+
+    toast.success("Product deleted successfully")
+    setDeleteTarget(null)
+    setDeleting(false)
+    await loadProducts()
   }
 
   async function handleSyncCatalog() {
@@ -205,7 +273,12 @@ export function ProductsPage() {
             )}
             {syncing ? "Syncing…" : "Sync Catalog"}
           </Button>
-          <Button size="sm" className="gap-1.5">
+          <Button
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setAddOpen(true)}
+            disabled={adding || deleting}
+          >
             <Plus className="size-3.5" />
             Add Product
           </Button>
@@ -375,25 +448,18 @@ export function ProductsPage() {
                     <p className="truncate text-sm font-semibold leading-tight">{product.name}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground font-mono">{product.id}</p>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <MoreHorizontal className="size-3.5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem>Edit product</DropdownMenuItem>
-                      <DropdownMenuItem>Duplicate</DropdownMenuItem>
-                      <DropdownMenuItem>View analytics</DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive focus:text-destructive">
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDeleteTarget(product)
+                    }}
+                    aria-label={`Delete ${product.name}`}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
@@ -418,6 +484,80 @@ export function ProductsPage() {
           ))}
         </div>
       )}
+      {/* Add Product Dialog */}
+      <Dialog open={addOpen} onOpenChange={(open) => { if (!adding) setAddOpen(open) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Product</DialogTitle>
+            <DialogDescription>
+              Add a new product to your catalog. You can sync its details from Noon later.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddProduct} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="partner-sku">Partner SKU <span className="text-destructive">*</span></Label>
+              <Input
+                id="partner-sku"
+                placeholder="e.g. NOON-SKU-12345"
+                value={addSku}
+                onChange={(e) => setAddSku(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="product-name">Product Name</Label>
+              <Input
+                id="product-name"
+                placeholder="Optional — will be fetched from Noon on sync"
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAddOpen(false)}
+                disabled={adding}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={adding}>
+                {adding ? <Loader2 className="size-4 animate-spin" /> : null}
+                {adding ? "Adding…" : "Add Product"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!deleting) setDeleteTarget(open ? deleteTarget : null) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete product?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove <span className="font-medium text-foreground">{deleteTarget?.name}</span>
+              (SKU: {deleteTarget?.id}) from your catalog. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDeleteProduct() }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <Loader2 className="size-4 animate-spin" /> : null}
+              {deleting ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
