@@ -248,11 +248,10 @@ export function OrdersPage() {
 
   async function handleGetNoonAwb() {
     if (!shipmentTarget) return
-    const countryCode = (shipmentTarget.customer_country_code ?? "").trim()
-    if (!countryCode) {
-      toast.error("Customer country code is required to generate an AWB")
-      return
-    }
+    const countryCode = (
+      shipmentTarget.customer_country_code ||
+      "eg"
+    ).trim().toLowerCase()
 
     setGeneratingAwb(true)
     const toastId = toast.loading("Generating AWB from Noon…")

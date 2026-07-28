@@ -162,19 +162,11 @@ Deno.serve(async (req: Request) => {
       qty?: number
     }
 
-    const countryCode =
+    const countryCode = (
       typeof parsed.country_code === "string" ? parsed.country_code.trim().toLowerCase() : ""
-    if (!countryCode) {
-      return new Response(
-        JSON.stringify({ ok: false, error: "`country_code` is required." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      )
-    }
+    ) || "eg"
 
-    const qty =
-      typeof parsed.qty === "number" && parsed.qty > 0
-        ? Math.min(parsed.qty, 100)
-        : 1
+    const qty = 1
 
     const payload = {
       country_code: countryCode,
