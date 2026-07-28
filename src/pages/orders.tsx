@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { supabase } from "@/lib/supabase"
-import { syncNoonOrders, markItemOos, createNoonShipment, createNoonSandboxOrder, printNoonLabel } from "@/lib/noon"
+import { syncNoonOrders, markItemOos, createNoonShipment, createNoonSandboxOrder, printNoonLabel, cancelNoonShipment } from "@/lib/noon"
 import type { Order, OrderItem } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -51,7 +51,7 @@ const STATUS_STYLES: Record<string, string> = {
   Refunded: "bg-muted text-muted-foreground border-border",
 }
 
-type OrderWithItemCount = Order & { item_count: number; awb_nr: string | null }
+type OrderWithItemCount = Order & { item_count: number; awb_nr: string | null; integration_shipment_nr: string | null }
 
 export function OrdersPage() {
   const [loading, setLoading] = useState(true)
@@ -72,6 +72,8 @@ export function OrdersPage() {
   const [shipmentSelectedItems, setShipmentSelectedItems] = useState<Set<string>>(new Set())
   const [creatingShipment, setCreatingShipment] = useState(false)
   const [printingLabel, setPrintingLabel] = useState<string | null>(null)
+  const [cancelTarget, setCancelTarget] = useState<OrderWithItemCount | null>(null)
+  const [cancellingShipment, setCancellingShipment] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -88,7 +90,8 @@ export function OrdersPage() {
         total_price,
         status,
         customer_country_code,
-        awb_nr
+        awb_nr,
+        integration_shipment_nr
       `)
       .order("order_created_at", { ascending: false, nullsFirst: false })
 
@@ -119,6 +122,7 @@ export function OrdersPage() {
         ...(o as Order),
         item_count: countMap[o.fbpi_order_nr ?? ""] ?? 0,
         awb_nr: (o as { awb_nr?: string | null }).awb_nr ?? null,
+        integration_shipment_nr: (o as { integration_shipment_nr?: string | null }).integration_shipment_nr ?? null,
       })) as OrderWithItemCount[]
 
       setOrders(rows)
@@ -305,7 +309,12 @@ export function OrdersPage() {
       setOrders((prev) =>
         prev.map((o) =>
           o.fbpi_order_nr === shipmentTarget.fbpi_order_nr
-            ? { ...o, status: "SHIPPED", awb_nr: result.awb_nr ?? null }
+            ? {
+                ...o,
+                status: "SHIPPED",
+                awb_nr: result.awb_nr ?? null,
+                integration_shipment_nr: result.integration_shipment_nr ?? null,
+              }
             : o
         )
       )
@@ -379,6 +388,60 @@ export function OrdersPage() {
       toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
     } finally {
       setPrintingLabel(null)
+    }
+  }
+
+  async function handleCancelShipment() {
+    if (!cancelTarget) return
+    if (!cancelTarget.warehouse_code || !cancelTarget.integration_shipment_nr) {
+      toast.error("Missing warehouse code or shipment reference for this order.")
+      setCancelTarget(null)
+      return
+    }
+
+    setCancellingShipment(true)
+    const toastId = toast.loading("Cancelling shipment on Noon…")
+    try {
+      const result = await cancelNoonShipment({
+        warehouse_code: cancelTarget.warehouse_code,
+        integration_shipment_nr: cancelTarget.integration_shipment_nr,
+      })
+      if (!result.ok) {
+        toast.error(result.error || "Failed to cancel shipment", { id: toastId })
+        return
+      }
+      toast.success("Shipment cancelled successfully", { id: toastId })
+
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.fbpi_order_nr === cancelTarget.fbpi_order_nr
+            ? {
+                ...o,
+                status: "CANCELLED",
+                awb_nr: null,
+                integration_shipment_nr: null,
+              }
+            : o
+        )
+      )
+
+      if (cancelTarget.fbpi_order_nr && itemsByOrder[cancelTarget.fbpi_order_nr]) {
+        setItemsByOrder((prev) => ({
+          ...prev,
+          [cancelTarget.fbpi_order_nr as string]: prev[
+            cancelTarget.fbpi_order_nr as string
+          ].map((item) => ({
+            ...item,
+            integration_status: "CANCELLED",
+          })),
+        }))
+      }
+
+      setCancelTarget(null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
+    } finally {
+      setCancellingShipment(false)
     }
   }
 
@@ -822,6 +885,21 @@ export function OrdersPage() {
                                           Print Label
                                         </Button>
                                       )}
+                                      {order.status === "SHIPPED" && order.integration_shipment_nr && (
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-7 gap-1 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
+                                          disabled={cancellingShipment && cancelTarget?.fbpi_order_nr === order.fbpi_order_nr}
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setCancelTarget(order)
+                                          }}
+                                        >
+                                          <Ban className="size-3" />
+                                          Cancel Shipment
+                                        </Button>
+                                      )}
                                     </div>
                                     <div className="overflow-hidden rounded-lg border bg-background">
                                       <Table>
@@ -913,6 +991,46 @@ export function OrdersPage() {
           </Card>
         </>
       )}
+
+      {/* Cancel Shipment Confirmation Dialog */}
+      <AlertDialog
+        open={cancelTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !cancellingShipment) {
+            setCancelTarget(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="size-5 text-red-600" />
+              Cancel Shipment?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel this shipment? This will cancel all
+              items inside it on Noon and cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancellingShipment}>Keep Shipment</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleCancelShipment()
+              }}
+              disabled={cancellingShipment}
+              className="bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600"
+            >
+              {cancellingShipment ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                "Yes, cancel shipment"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Mark OOS Confirmation Dialog */}
       <AlertDialog

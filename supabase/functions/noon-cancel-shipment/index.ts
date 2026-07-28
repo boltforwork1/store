@@ -6,8 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 }
 
-const NOON_CREATE_SHIPMENT_URL =
-  "https://noon-api-gateway.noon.partners/fbpi/v1/shipment/create"
+const NOON_CANCEL_SHIPMENT_URL =
+  "https://noon-api-gateway.noon.partners/fbpi/v1/shipment/cancel"
 
 const USER_AGENT = "NexCommerce/1.0.0"
 
@@ -86,11 +86,11 @@ function extractNoonError(body: unknown): string | null {
   return null
 }
 
-async function callNoonCreateShipment(
+async function callNoonCancelShipment(
   cookie: string,
   payload: Record<string, unknown>
 ): Promise<{ ok: boolean; status: number; statusText: string; text: string; body: unknown }> {
-  const response = await fetch(NOON_CREATE_SHIPMENT_URL, {
+  const response = await fetch(NOON_CANCEL_SHIPMENT_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -111,12 +111,6 @@ async function callNoonCreateShipment(
   return { ok: response.ok, status: response.status, statusText: response.statusText, text: textBody, body }
 }
 
-function generateIntegrationShipmentNr(): string {
-  const timestamp = Date.now()
-  const random = Math.floor(Math.random() * 1_000_000)
-  return `SHIP-${timestamp}-${random}`
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders })
@@ -125,20 +119,13 @@ Deno.serve(async (req: Request) => {
   try {
     const parsed = (await req.json().catch(() => ({}))) as {
       warehouse_code?: string
-      fbpi_order_nr?: string
-      items?: string[]
-      awb_nr?: string
+      integration_shipment_nr?: string
     }
 
     const warehouseCode =
       typeof parsed.warehouse_code === "string" ? parsed.warehouse_code.trim() : ""
-    const fbpiOrderNr =
-      typeof parsed.fbpi_order_nr === "string" ? parsed.fbpi_order_nr.trim() : ""
-    const items = Array.isArray(parsed.items)
-      ? parsed.items.filter((i): i is string => typeof i === "string" && i.trim() !== "").map((i) => i.trim())
-      : []
-    const awbNrInput =
-      typeof parsed.awb_nr === "string" ? parsed.awb_nr.trim() : ""
+    const integrationShipmentNr =
+      typeof parsed.integration_shipment_nr === "string" ? parsed.integration_shipment_nr.trim() : ""
 
     if (!warehouseCode) {
       return new Response(
@@ -146,42 +133,25 @@ Deno.serve(async (req: Request) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }
-    if (!fbpiOrderNr) {
+    if (!integrationShipmentNr) {
       return new Response(
-        JSON.stringify({ ok: false, error: "`fbpi_order_nr` is required." }),
+        JSON.stringify({ ok: false, error: "`integration_shipment_nr` is required." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }
-    if (items.length === 0) {
-      return new Response(
-        JSON.stringify({ ok: false, error: "`items` must contain at least one `mp_item_nr`." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      )
-    }
-
-    const integrationShipmentNr = generateIntegrationShipmentNr()
-    const awbNr = awbNrInput || `AWB-${Math.floor(Math.random() * 1_000_000)}`
 
     const payload = {
       warehouse_code: warehouseCode,
       integration_shipment_nr: integrationShipmentNr,
-      fbpi_order_nr: fbpiOrderNr,
-      awbs: [
-        {
-          courier: "noon",
-          awb_nr: awbNr,
-        },
-      ],
-      items: items.map((mp_item_nr) => ({ mp_item_nr })),
     }
 
-    // 1. Call the Noon CreateShipment API.
+    // 1. Call the Noon CancelShipment API.
     const cookie = await getSessionCookie(false)
-    let result = await callNoonCreateShipment(cookie, payload)
+    let result = await callNoonCancelShipment(cookie, payload)
 
     if (result.status === 401) {
       const freshCookie = await getSessionCookie(true)
-      result = await callNoonCreateShipment(freshCookie, payload)
+      result = await callNoonCancelShipment(freshCookie, payload)
     }
 
     if (!result.ok) {
@@ -208,18 +178,19 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    // 2. Update the local database: mark the shipped items and the order.
-    const { error: itemsError } = await supabase
-      .from("order_items")
-      .update({ integration_status: "SHIPPED" })
-      .in("mp_item_nr", items)
-      .eq("fbpi_order_nr", fbpiOrderNr)
+    // 2. Update the local database: revert the order and its items.
+    // Find the order by integration_shipment_nr.
+    const { data: orderData, error: orderLookupError } = await supabase
+      .from("orders")
+      .select("fbpi_order_nr")
+      .eq("integration_shipment_nr", integrationShipmentNr)
+      .maybeSingle()
 
-    if (itemsError) {
+    if (orderLookupError) {
       return new Response(
         JSON.stringify({
           ok: false,
-          error: `Noon accepted the shipment but the local item update failed: ${itemsError.message}`,
+          error: `Noon accepted the cancellation but the local order lookup failed: ${orderLookupError.message}`,
         }),
         {
           status: 500,
@@ -228,37 +199,59 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    const { error: orderError } = await supabase
-      .from("orders")
-      .update({
-        status: "SHIPPED",
-        awb_nr: awbNr,
-        integration_shipment_nr: integrationShipmentNr,
-      })
-      .eq("fbpi_order_nr", fbpiOrderNr)
+    const fbpiOrderNr = (orderData as { fbpi_order_nr?: string } | null)?.fbpi_order_nr ?? null
 
-    if (orderError) {
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: `Noon accepted the shipment but the local order update failed: ${orderError.message}`,
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      )
+    if (fbpiOrderNr) {
+      // Revert all line items for this order to CANCELLED.
+      const { error: itemsError } = await supabase
+        .from("order_items")
+        .update({ integration_status: "CANCELLED" })
+        .eq("fbpi_order_nr", fbpiOrderNr)
+
+      if (itemsError) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: `Noon accepted the cancellation but the local item update failed: ${itemsError.message}`,
+          }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        )
+      }
+
+      // Revert the order to CANCELLED and clear the shipment references.
+      const { error: orderUpdateError } = await supabase
+        .from("orders")
+        .update({
+          status: "CANCELLED",
+          awb_nr: null,
+          integration_shipment_nr: null,
+        })
+        .eq("fbpi_order_nr", fbpiOrderNr)
+
+      if (orderUpdateError) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: `Noon accepted the cancellation but the local order update failed: ${orderUpdateError.message}`,
+          }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        )
+      }
     }
 
     return new Response(
       JSON.stringify({
         ok: true,
         data: {
-          fbpi_order_nr: fbpiOrderNr,
           integration_shipment_nr: integrationShipmentNr,
-          awb_nr: awbNr,
-          items,
-          status: "SHIPPED",
+          fbpi_order_nr: fbpiOrderNr,
+          status: "CANCELLED",
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

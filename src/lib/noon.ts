@@ -537,3 +537,36 @@ export async function createNoonShipment(params: {
     error: result.error,
   }
 }
+
+export type NoonCancelShipmentResult = {
+  ok: boolean
+  fbpi_order_nr?: string
+  integration_shipment_nr?: string
+  status?: string
+  error?: string
+}
+
+/**
+ * Cancel a shipment on Noon via the `noon-cancel-shipment` edge function.
+ * The function calls Noon's `/fbpi/v1/shipment/cancel` endpoint with the
+ * warehouse code and integration shipment number, then reverts the local
+ * order and its line items to CANCELLED.
+ */
+export async function cancelNoonShipment(params: {
+  warehouse_code: string
+  integration_shipment_nr: string
+}): Promise<NoonCancelShipmentResult> {
+  const result = await callNoonFunction("noon-cancel-shipment", params)
+  const data = (result.data ?? {}) as {
+    fbpi_order_nr?: string
+    integration_shipment_nr?: string
+    status?: string
+  }
+  return {
+    ok: result.ok,
+    fbpi_order_nr: data.fbpi_order_nr,
+    integration_shipment_nr: data.integration_shipment_nr,
+    status: data.status,
+    error: result.error,
+  }
+}

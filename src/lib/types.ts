@@ -24,6 +24,7 @@ export type Order = {
   status: string | null
   customer_country_code: string | null
   awb_nr: string | null
+  integration_shipment_nr: string | null
 }
 
 export type OrderItem = {
