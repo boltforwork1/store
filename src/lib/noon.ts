@@ -86,8 +86,19 @@ export function acknowledgeNoonOrder(orderId: string): Promise<NoonResult> {
   return callNoonFunction("noon-ack-order", { order_id: orderId })
 }
 
-export function printNoonLabel(orderId: string): Promise<NoonResult> {
-  return callNoonFunction("noon-print-label", { order_id: orderId })
+export type NoonPrintLabelResult = {
+  ok: boolean
+  label_url?: string | null
+  error?: string
+}
+
+export function printNoonLabel(orderId: string, awbNr?: string): Promise<NoonPrintLabelResult> {
+  return callNoonFunction("noon-print-label", { order_id: orderId, awb_nr: awbNr }).then(
+    (result) => {
+      const data = (result.data ?? {}) as { label_url?: string | null }
+      return { ok: result.ok, label_url: data.label_url, error: result.error }
+    }
+  )
 }
 
 import Papa from "papaparse"

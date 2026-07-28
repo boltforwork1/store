@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react"
-import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, TriangleAlert as AlertTriangle, Truck, PackageCheck, Wrench } from "lucide-react"
+import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, TriangleAlert as AlertTriangle, Truck, PackageCheck, Wrench, Printer } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { supabase } from "@/lib/supabase"
-import { syncNoonOrders, markItemOos, createNoonShipment, createNoonSandboxOrder } from "@/lib/noon"
+import { syncNoonOrders, markItemOos, createNoonShipment, createNoonSandboxOrder, printNoonLabel } from "@/lib/noon"
 import type { Order, OrderItem } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -51,7 +51,7 @@ const STATUS_STYLES: Record<string, string> = {
   Refunded: "bg-muted text-muted-foreground border-border",
 }
 
-type OrderWithItemCount = Order & { item_count: number }
+type OrderWithItemCount = Order & { item_count: number; awb_nr: string | null }
 
 export function OrdersPage() {
   const [loading, setLoading] = useState(true)
@@ -71,6 +71,7 @@ export function OrdersPage() {
   const [shipmentAwb, setShipmentAwb] = useState("")
   const [shipmentSelectedItems, setShipmentSelectedItems] = useState<Set<string>>(new Set())
   const [creatingShipment, setCreatingShipment] = useState(false)
+  const [printingLabel, setPrintingLabel] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -86,7 +87,8 @@ export function OrdersPage() {
         order_created_at,
         total_price,
         status,
-        customer_country_code
+        customer_country_code,
+        awb_nr
       `)
       .order("order_created_at", { ascending: false, nullsFirst: false })
 
@@ -116,6 +118,7 @@ export function OrdersPage() {
       const rows = (data ?? []).map((o) => ({
         ...(o as Order),
         item_count: countMap[o.fbpi_order_nr ?? ""] ?? 0,
+        awb_nr: (o as { awb_nr?: string | null }).awb_nr ?? null,
       })) as OrderWithItemCount[]
 
       setOrders(rows)
@@ -302,7 +305,7 @@ export function OrdersPage() {
       setOrders((prev) =>
         prev.map((o) =>
           o.fbpi_order_nr === shipmentTarget.fbpi_order_nr
-            ? { ...o, status: "SHIPPED" }
+            ? { ...o, status: "SHIPPED", awb_nr: result.awb_nr ?? null }
             : o
         )
       )
@@ -353,6 +356,29 @@ export function OrdersPage() {
       setMarkingOos(false)
       setOosItemNr(null)
       setOosTarget(null)
+    }
+  }
+
+  async function handlePrintLabel(order: OrderWithItemCount) {
+    if (!order.fbpi_order_nr) return
+    setPrintingLabel(order.fbpi_order_nr)
+    const toastId = toast.loading("Fetching shipping label from Noon…")
+    try {
+      const result = await printNoonLabel(order.fbpi_order_nr, order.awb_nr ?? undefined)
+      if (!result.ok) {
+        toast.error(result.error || "Failed to fetch shipping label", { id: toastId })
+        return
+      }
+      if (result.label_url) {
+        window.open(result.label_url, "_blank", "noopener,noreferrer")
+        toast.success("Shipping label opened in a new tab", { id: toastId })
+      } else {
+        toast.success("Label request sent to Noon", { id: toastId })
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
+    } finally {
+      setPrintingLabel(null)
     }
   }
 
@@ -775,6 +801,25 @@ export function OrdersPage() {
                                         >
                                           <Truck className="size-3" />
                                           Fulfill Order
+                                        </Button>
+                                      )}
+                                      {order.status === "SHIPPED" && order.awb_nr && (
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-7 gap-1"
+                                          disabled={printingLabel === order.fbpi_order_nr}
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            handlePrintLabel(order)
+                                          }}
+                                        >
+                                          {printingLabel === order.fbpi_order_nr ? (
+                                            <Loader2 className="size-3 animate-spin" />
+                                          ) : (
+                                            <Printer className="size-3" />
+                                          )}
+                                          Print Label
                                         </Button>
                                       )}
                                     </div>

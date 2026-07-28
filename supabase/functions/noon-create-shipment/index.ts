@@ -230,7 +230,7 @@ Deno.serve(async (req: Request) => {
 
     const { error: orderError } = await supabase
       .from("orders")
-      .update({ status: "SHIPPED" })
+      .update({ status: "SHIPPED", awb_nr: awbNr })
       .eq("fbpi_order_nr", fbpiOrderNr)
 
     if (orderError) {
