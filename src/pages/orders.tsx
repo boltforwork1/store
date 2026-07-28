@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { supabase } from "@/lib/supabase"
-import { syncNoonOrders, markItemOos, createNoonShipment, createNoonSandboxOrder, cancelNoonShipment } from "@/lib/noon"
+import { syncNoonOrders, markItemOos, createNoonShipment, createNoonSandboxOrder, cancelNoonShipment, generateNoonAwb } from "@/lib/noon"
 import type { Order, OrderItem } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -72,6 +72,7 @@ export function OrdersPage() {
   const [shipmentAwb, setShipmentAwb] = useState("")
   const [shipmentSelectedItems, setShipmentSelectedItems] = useState<Set<string>>(new Set())
   const [creatingShipment, setCreatingShipment] = useState(false)
+  const [generatingAwb, setGeneratingAwb] = useState(false)
   const [labelTarget, setLabelTarget] = useState<OrderWithItemCount | null>(null)
   const [cancelTarget, setCancelTarget] = useState<OrderWithItemCount | null>(null)
   const [cancellingShipment, setCancellingShipment] = useState(false)
@@ -245,6 +246,32 @@ export function OrdersPage() {
     setShipmentSelectedItems(new Set(fulfillable.map((it) => it.mp_item_nr)))
   }
 
+  async function handleGetNoonAwb() {
+    if (!shipmentTarget) return
+    const warehouse = (shipmentTarget.warehouse_code ?? warehouseCode).trim()
+    if (!warehouse) {
+      toast.error("Warehouse code is required to generate an AWB")
+      return
+    }
+
+    setGeneratingAwb(true)
+    const toastId = toast.loading("Generating AWB from Noon…")
+
+    try {
+      const result = await generateNoonAwb({ warehouse_code: warehouse })
+      if (!result.ok || !result.awb_nr) {
+        toast.error(result.error || "Failed to generate AWB", { id: toastId })
+        return
+      }
+      setShipmentAwb(result.awb_nr)
+      toast.success(`AWB generated: ${result.awb_nr}`, { id: toastId })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
+    } finally {
+      setGeneratingAwb(false)
+    }
+  }
+
   function toggleShipmentItem(mpItemNr: string) {
     setShipmentSelectedItems((prev) => {
       const next = new Set(prev)
@@ -276,11 +303,17 @@ export function OrdersPage() {
     const toastId = toast.loading("Creating shipment on Noon…")
 
     try {
+      const awbNr = shipmentAwb.trim()
+      if (!awbNr) {
+        toast.error("An AWB number is required. Click \"Get Noon AWB\" to generate one.", { id: toastId })
+        return
+      }
+
       const result = await createNoonShipment({
         warehouse_code: warehouse,
         fbpi_order_nr: shipmentTarget.fbpi_order_nr,
         items: selectedItems,
-        awb_nr: shipmentAwb.trim() || undefined,
+        awb_nr: awbNr,
       })
 
       if (!result.ok) {
@@ -289,7 +322,7 @@ export function OrdersPage() {
       }
 
       toast.success(
-        `Shipment created (AWB: ${result.awb_nr ?? "auto"})`,
+        `Shipment created (AWB: ${result.awb_nr ?? awbNr})`,
         { id: toastId }
       )
 
@@ -1105,8 +1138,8 @@ export function OrdersPage() {
               <span className="font-mono font-medium">
                 {shipmentTarget?.fbpi_order_nr}
               </span>{" "}
-              via Noon. Select the items to ship and enter an AWB number (optional
-              — one will be auto-generated if left blank).
+              via Noon. Select the items to ship, then click "Get Noon AWB" to
+              generate a real tracking number before creating the shipment.
             </DialogDescription>
           </DialogHeader>
 
@@ -1156,15 +1189,34 @@ export function OrdersPage() {
 
             {/* AWB number input */}
             <div className="space-y-1.5">
-              <Label htmlFor="awb-nr">AWB Number (optional)</Label>
-              <Input
-                id="awb-nr"
-                placeholder="Auto-generated if left blank"
-                value={shipmentAwb}
-                onChange={(e) => setShipmentAwb(e.target.value)}
-                className="bg-background"
-                disabled={creatingShipment}
-              />
+              <Label htmlFor="awb-nr">
+                AWB Number <span className="text-destructive">*</span>
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="awb-nr"
+                  placeholder={'Click "Get Noon AWB" to generate'}
+                  value={shipmentAwb}
+                  onChange={(e) => setShipmentAwb(e.target.value)}
+                  className="bg-background"
+                  disabled={creatingShipment || generatingAwb}
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0 gap-1.5"
+                  onClick={handleGetNoonAwb}
+                  disabled={generatingAwb || creatingShipment}
+                >
+                  {generatingAwb ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-3.5" />
+                  )}
+                  {generatingAwb ? "Generating…" : "Get Noon AWB"}
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -1178,7 +1230,7 @@ export function OrdersPage() {
             </Button>
             <Button
               onClick={handleConfirmCreateShipment}
-              disabled={creatingShipment || shipmentSelectedItems.size === 0}
+              disabled={creatingShipment || shipmentSelectedItems.size === 0 || !shipmentAwb.trim() || generatingAwb}
               className="gap-1.5"
             >
               {creatingShipment ? (

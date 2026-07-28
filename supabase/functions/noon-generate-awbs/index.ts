@@ -1,20 +1,15 @@
-import { createClient } from "npm:@supabase/supabase-js@2.110.8"
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 }
 
-const NOON_CREATE_SHIPMENT_URL =
-  "https://noon-api-gateway.noon.partners/fbpi/v1/shipment/create"
+const NOON_GENERATE_AWBS_URL =
+  "https://noon-api-gateway.noon.partners/fbpi/v1/awbs/generate"
 
+// Per the Noon Partner API spec, ALL requests must include a User-Agent header
+// identifying the application. Requests without it may be rejected.
 const USER_AGENT = "NexCommerce/1.0.0"
-
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL") ?? "",
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-)
 
 async function getSessionCookie(force = false): Promise<string> {
   const authUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/noon-auth`
@@ -86,11 +81,11 @@ function extractNoonError(body: unknown): string | null {
   return null
 }
 
-async function callNoonCreateShipment(
+async function callNoonGenerateAwbs(
   cookie: string,
   payload: Record<string, unknown>
 ): Promise<{ ok: boolean; status: number; statusText: string; text: string; body: unknown }> {
-  const response = await fetch(NOON_CREATE_SHIPMENT_URL, {
+  const response = await fetch(NOON_GENERATE_AWBS_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -111,10 +106,49 @@ async function callNoonCreateShipment(
   return { ok: response.ok, status: response.status, statusText: response.statusText, text: textBody, body }
 }
 
-function generateIntegrationShipmentNr(): string {
-  const timestamp = Date.now()
-  const random = Math.floor(Math.random() * 1_000_000)
-  return `SHIP-${timestamp}-${random}`
+/**
+ * Extract the generated AWB number from the Noon response. The response may
+ * nest the AWB under `data`/`result`/`awbs`. Each AWB entry typically has an
+ * `awb_nr` field. We return the first non-empty value we find.
+ */
+function extractAwbNr(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null
+  const obj = body as Record<string, unknown>
+
+  // Direct top-level field.
+  if (typeof obj.awb_nr === "string" && obj.awb_nr.trim() !== "") {
+    return obj.awb_nr.trim()
+  }
+
+  // Search nested candidates.
+  const candidates: Record<string, unknown>[] = [obj]
+  for (const key of ["data", "result", "awbs", "awb"]) {
+    const nested = obj[key]
+    if (nested && typeof nested === "object") {
+      candidates.push(nested as Record<string, unknown>)
+    }
+  }
+
+  for (const candidate of candidates) {
+    // Single AWB object.
+    if (typeof candidate.awb_nr === "string" && candidate.awb_nr.trim() !== "") {
+      return candidate.awb_nr.trim()
+    }
+    // Array of AWB objects.
+    const awbsArray = candidate.awbs
+    if (Array.isArray(awbsArray) && awbsArray.length > 0) {
+      for (const entry of awbsArray) {
+        if (entry && typeof entry === "object") {
+          const nr = (entry as Record<string, unknown>).awb_nr
+          if (typeof nr === "string" && nr.trim() !== "") {
+            return nr.trim()
+          }
+        }
+      }
+    }
+  }
+
+  return null
 }
 
 Deno.serve(async (req: Request) => {
@@ -125,72 +159,42 @@ Deno.serve(async (req: Request) => {
   try {
     const parsed = (await req.json().catch(() => ({}))) as {
       warehouse_code?: string
-      fbpi_order_nr?: string
-      items?: string[]
-      awb_nr?: string
+      courier?: string
+      count?: number
     }
 
     const warehouseCode =
       typeof parsed.warehouse_code === "string" ? parsed.warehouse_code.trim() : ""
-    const fbpiOrderNr =
-      typeof parsed.fbpi_order_nr === "string" ? parsed.fbpi_order_nr.trim() : ""
-    const items = Array.isArray(parsed.items)
-      ? parsed.items.filter((i): i is string => typeof i === "string" && i.trim() !== "").map((i) => i.trim())
-      : []
-    const awbNrInput =
-      typeof parsed.awb_nr === "string" ? parsed.awb_nr.trim() : ""
-
     if (!warehouseCode) {
       return new Response(
         JSON.stringify({ ok: false, error: "`warehouse_code` is required." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }
-    if (!fbpiOrderNr) {
-      return new Response(
-        JSON.stringify({ ok: false, error: "`fbpi_order_nr` is required." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      )
-    }
-    if (items.length === 0) {
-      return new Response(
-        JSON.stringify({ ok: false, error: "`items` must contain at least one `mp_item_nr`." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      )
-    }
-    if (!awbNrInput) {
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: "`awb_nr` is required. Use the \"Get Noon AWB\" button to generate a valid AWB before creating a shipment.",
-        }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      )
-    }
 
-    const integrationShipmentNr = generateIntegrationShipmentNr()
-    const awbNr = awbNrInput
+    const courier =
+      typeof parsed.courier === "string" && parsed.courier.trim() !== ""
+        ? parsed.courier.trim()
+        : "noon"
+
+    const count =
+      typeof parsed.count === "number" && parsed.count > 0
+        ? Math.min(parsed.count, 100)
+        : 1
 
     const payload = {
       warehouse_code: warehouseCode,
-      integration_shipment_nr: integrationShipmentNr,
-      fbpi_order_nr: fbpiOrderNr,
-      awbs: [
-        {
-          courier: "noon",
-          awb_nr: awbNr,
-        },
-      ],
-      items: items.map((mp_item_nr) => ({ mp_item_nr })),
+      courier,
+      count,
     }
 
-    // 1. Call the Noon CreateShipment API.
+    // 1. Call the Noon GenerateAwbs API.
     const cookie = await getSessionCookie(false)
-    let result = await callNoonCreateShipment(cookie, payload)
+    let result = await callNoonGenerateAwbs(cookie, payload)
 
     if (result.status === 401) {
       const freshCookie = await getSessionCookie(true)
-      result = await callNoonCreateShipment(freshCookie, payload)
+      result = await callNoonGenerateAwbs(freshCookie, payload)
     }
 
     if (!result.ok) {
@@ -217,43 +221,16 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    // 2. Update the local database: mark the shipped items and the order.
-    const { error: itemsError } = await supabase
-      .from("order_items")
-      .update({ integration_status: "SHIPPED" })
-      .in("mp_item_nr", items)
-      .eq("fbpi_order_nr", fbpiOrderNr)
-
-    if (itemsError) {
+    // 2. Extract the AWB number from the response.
+    const awbNr = extractAwbNr(result.body)
+    if (!awbNr) {
       return new Response(
         JSON.stringify({
           ok: false,
-          error: `Noon accepted the shipment but the local item update failed: ${itemsError.message}`,
+          error: "Noon returned a success response but no AWB number was found.",
         }),
         {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      )
-    }
-
-    const { error: orderError } = await supabase
-      .from("orders")
-      .update({
-        status: "SHIPPED",
-        awb_nr: awbNr,
-        integration_shipment_nr: integrationShipmentNr,
-      })
-      .eq("fbpi_order_nr", fbpiOrderNr)
-
-    if (orderError) {
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: `Noon accepted the shipment but the local order update failed: ${orderError.message}`,
-        }),
-        {
-          status: 500,
+          status: 502,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       )
@@ -262,13 +239,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         ok: true,
-        data: {
-          fbpi_order_nr: fbpiOrderNr,
-          integration_shipment_nr: integrationShipmentNr,
-          awb_nr: awbNr,
-          items,
-          status: "SHIPPED",
-        },
+        data: { awb_nr: awbNr },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )

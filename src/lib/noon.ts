@@ -494,15 +494,15 @@ export type NoonShipmentResult = {
 /**
  * Create a shipment for an order via the `noon-create-shipment` edge function.
  * The function calls Noon's `/fbpi/v1/shipment/create` endpoint with the
- * provided warehouse code, order number, line items, and AWB number (auto-
- * generated if omitted), then updates the local order and item statuses to
- * SHIPPED.
+ * provided warehouse code, order number, line items, and AWB number (which
+ * must be a real AWB obtained from Noon — use `generateNoonAwb` first), then
+ * updates the local order and item statuses to SHIPPED.
  */
 export async function createNoonShipment(params: {
   warehouse_code: string
   fbpi_order_nr: string
   items: string[]
-  awb_nr?: string
+  awb_nr: string
 }): Promise<NoonShipmentResult> {
   const result = await callNoonFunction("noon-create-shipment", params)
   const data = (result.data ?? {}) as {
@@ -519,6 +519,31 @@ export async function createNoonShipment(params: {
     awb_nr: data.awb_nr,
     items: data.items,
     status: data.status,
+    error: result.error,
+  }
+}
+
+export type NoonGenerateAwbResult = {
+  ok: boolean
+  awb_nr?: string
+  error?: string
+}
+
+/**
+ * Generate a real AWB (Air Waybill) tracking number from Noon via the
+ * `noon-generate-awbs` edge function. The returned `awb_nr` must be passed
+ * to `createNoonShipment` — the shipment endpoint no longer accepts a blank
+ * AWB and will reject dummy/auto-generated values.
+ */
+export async function generateNoonAwb(params: {
+  warehouse_code: string
+  courier?: string
+}): Promise<NoonGenerateAwbResult> {
+  const result = await callNoonFunction("noon-generate-awbs", params)
+  const data = (result.data ?? {}) as { awb_nr?: string }
+  return {
+    ok: result.ok,
+    awb_nr: data.awb_nr,
     error: result.error,
   }
 }
