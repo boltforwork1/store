@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Package2, Warehouse, RefreshCw, Search, Loader2, Check, X, PackageSearch } from "lucide-react"
+import { Package2, Warehouse, RefreshCw, Search, Loader as Loader2, Check, X, PackageSearch, DatabaseZap } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { supabase } from "@/lib/supabase"
-import { fetchNoonStock, updateNoonStock } from "@/lib/noon"
+import { fetchNoonStock, updateNoonStock, syncNoonInventory } from "@/lib/noon"
 import { cn } from "@/lib/utils"
 
 type InventoryRow = {
@@ -54,6 +54,10 @@ export function InventoryPage() {
   // Quick update state (inline on a lookup result)
   const [newQty, setNewQty] = useState("")
   const [updating, setUpdating] = useState(false)
+
+  // Bulk inventory sync state
+  const [syncWarehouse, setSyncWarehouse] = useState("")
+  const [syncing, setSyncing] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -192,6 +196,42 @@ export function InventoryPage() {
     setNewQty("")
   }
 
+  async function handleSyncInventory(e: React.FormEvent) {
+    e.preventDefault()
+
+    const warehouseCode = syncWarehouse.trim()
+    if (!warehouseCode) {
+      toast.error("Warehouse code is required")
+      return
+    }
+
+    setSyncing(true)
+    const toastId = toast.loading(`Syncing inventory from Noon for warehouse ${warehouseCode}…`)
+
+    try {
+      const result = await syncNoonInventory({ warehouse_code: warehouseCode })
+
+      if (!result.ok) {
+        toast.error(result.error ?? "Failed to sync inventory", { id: toastId })
+        return
+      }
+
+      const total = result.total_products ?? 0
+      const synced = result.synced ?? 0
+      toast.success(
+        `Successfully synced inventory for ${total} products (${synced} stock levels retrieved from Noon)`,
+        { id: toastId }
+      )
+      setSyncWarehouse("")
+      await load()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unexpected error"
+      toast.error(message, { id: toastId })
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -296,6 +336,50 @@ export function InventoryPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Noon Inventory Sync (bulk) */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base flex items-center gap-2">
+            <DatabaseZap className="size-4 text-muted-foreground" />
+            Noon Inventory Sync
+          </CardTitle>
+          <CardDescription>
+            Pull real-time stock quantities from Noon for all your products at once. Enter the
+            warehouse code (e.g. W00210108EG) and click Sync — every SKU will be updated with its
+            live quantity and in-stock status.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSyncInventory} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="sync-warehouse">Warehouse code</Label>
+              <Input
+                id="sync-warehouse"
+                placeholder="e.g. W00210108EG"
+                value={syncWarehouse}
+                onChange={(e) => setSyncWarehouse(e.target.value)}
+                disabled={syncing}
+                required
+                className="bg-background"
+              />
+            </div>
+            <Button type="submit" disabled={syncing} className="gap-1.5 sm:w-auto">
+              {syncing ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Syncing…
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="size-3.5" />
+                  Sync Inventory
+                </>
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       {/* Stock Lookup + Quick Update */}
       <Card>

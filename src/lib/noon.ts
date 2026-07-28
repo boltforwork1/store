@@ -287,3 +287,35 @@ export async function fetchNoonOrderById(params: {
   const data = (result.data ?? {}) as { order?: NoonFetchedOrder }
   return { ok: result.ok, order: data.order, error: result.error }
 }
+
+export type NoonInventorySyncResult = {
+  ok: boolean
+  total_products?: number
+  synced?: number
+  updated?: number
+  batches?: number
+  warehouse_code?: string
+  error?: string
+}
+
+export async function syncNoonInventory(params: {
+  warehouse_code: string
+}): Promise<NoonInventorySyncResult> {
+  const result = await callNoonFunction("noon-sync-inventory", params)
+  const data = (result.data ?? {}) as {
+    total_products?: number
+    synced?: number
+    updated?: number
+    batches?: number
+    warehouse_code?: string
+  }
+  return {
+    ok: result.ok,
+    total_products: data.total_products,
+    synced: data.synced,
+    updated: data.updated,
+    batches: data.batches,
+    warehouse_code: data.warehouse_code,
+    error: result.error,
+  }
+}
