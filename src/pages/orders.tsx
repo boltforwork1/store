@@ -47,6 +47,7 @@ import {
   computeDisplayStatus,
   computeDisplayTotal,
   isRevenueEligible,
+  CANCELLED_OR_OOS,
 } from "@/lib/order-status"
 
 type OrderWithItemCount = Order & { item_count: number; awb_nr: string | null; integration_shipment_nr: string | null }
@@ -663,26 +664,48 @@ export function OrdersPage() {
     toast.success("Orders exported")
   }
 
+  // Compute the dynamic display status for every order upfront, using the
+  // same line-items logic the table rows use (computeDisplayStatus). This
+  // guarantees the tab counts and filtering match what's shown in the Status
+  // column — e.g. an order whose stored status is "NEW" but whose items are
+  // all cancelled/OOS shows as CANCELLED here too.
+  const dynamicStatusByKey = new Map<string, string>()
+  for (const o of orders) {
+    const key = o.fbpi_order_nr ?? o.id
+    const items = o.fbpi_order_nr ? itemsByOrder[o.fbpi_order_nr] : undefined
+    dynamicStatusByKey.set(key, computeDisplayStatus(o.status, items))
+  }
+
+  // Bucket each order into one of the real-workflow tabs. Uses statusStyleKey
+  // to normalize prefixes so SHIPPED, CANCELLED, OUT_OF_STOCK etc. all map to
+  // the right category regardless of how Noon spelled the status.
+  function orderTabBucket(order: OrderWithItemCount): string {
+    const key = order.fbpi_order_nr ?? order.id
+    const normalized = statusStyleKey(dynamicStatusByKey.get(key) ?? "NEW")
+    if (normalized === "SHIPPED") return "shipped"
+    if (CANCELLED_OR_OOS.includes(normalized)) return "cancelled"
+    if (normalized === "RETURNED" || normalized === "REFUNDED") return "returned"
+    return "new"
+  }
+
   const statusCounts = {
     all: orders.length,
-    NEW: orders.filter((o) => (o.status ?? "NEW") === "NEW").length,
-    Pending: orders.filter((o) => o.status === "Pending").length,
-    Acknowledged: orders.filter((o) => o.status === "Acknowledged").length,
-    Shipped: orders.filter((o) => o.status === "Shipped").length,
-    Completed: orders.filter((o) => o.status === "Completed").length,
+    new: orders.filter((o) => orderTabBucket(o) === "new").length,
+    shipped: orders.filter((o) => orderTabBucket(o) === "shipped").length,
+    cancelled: orders.filter((o) => orderTabBucket(o) === "cancelled").length,
+    returned: orders.filter((o) => orderTabBucket(o) === "returned").length,
   }
 
   const tabs = [
     { label: "All Orders", value: "all", count: statusCounts.all },
-    { label: "New", value: "NEW", count: statusCounts.NEW },
-    { label: "Pending", value: "Pending", count: statusCounts.Pending },
-    { label: "Acknowledged", value: "Acknowledged", count: statusCounts.Acknowledged },
-    { label: "Shipped", value: "Shipped", count: statusCounts.Shipped },
-    { label: "Completed", value: "Completed", count: statusCounts.Completed },
+    { label: "New", value: "new", count: statusCounts.new },
+    { label: "Shipped", value: "shipped", count: statusCounts.shipped },
+    { label: "Cancelled", value: "cancelled", count: statusCounts.cancelled },
+    { label: "Returned", value: "returned", count: statusCounts.returned },
   ]
 
   const filtered = orders.filter((o) => {
-    const matchesTab = activeTab === "all" || (o.status ?? "NEW") === activeTab
+    const matchesTab = activeTab === "all" || orderTabBucket(o) === activeTab
     const q = search.trim().toLowerCase()
     const matchesSearch =
       q === "" ||
@@ -725,7 +748,7 @@ export function OrdersPage() {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Orders</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {orders.length} total orders · {statusCounts.NEW} new
+            {orders.length} total orders · {statusCounts.new} new
           </p>
         </div>
         <div className="flex items-center gap-2">
