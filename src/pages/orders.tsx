@@ -694,7 +694,10 @@ export function OrdersPage() {
 
   const totalRevenue = orders
     .filter((o) => isRevenueEligible(o.status))
-    .reduce((sum, o) => sum + Number(o.total_price ?? 0), 0)
+    .reduce((sum, o) => {
+      const items = o.fbpi_order_nr ? itemsByOrder[o.fbpi_order_nr] : undefined
+      return sum + computeDisplayTotal(o.total_price, items)
+    }, 0)
 
   if (loading) {
     return (

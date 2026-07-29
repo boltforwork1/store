@@ -78,7 +78,7 @@ export function OverviewPage() {
 
     const [productsRes, ordersRes, recentRes] = await Promise.all([
       supabase.from("products").select("id, name, price, stock_qty, is_active"),
-      supabase.from("orders").select("id, noon_order_id, total_price, status, order_date, customer_country_code"),
+      supabase.from("orders").select("id, noon_order_id, fbpi_order_nr, total_price, status, order_date, customer_country_code"),
       supabase
         .from("orders")
         .select("id, noon_order_id, fbpi_order_nr, total_price, status, order_date, customer_country_code")
@@ -108,6 +108,26 @@ export function OverviewPage() {
         }
       }
     }
+
+    // Fetch order_items for ALL orders so revenue can fall back to
+    // summing line items when the parent order's total is missing.
+    const allOrderIds = (orders as unknown as { fbpi_order_nr: string | null }[])
+      .map((o) => o.fbpi_order_nr)
+      .filter((v): v is string => v != null)
+    let allItemsByOrder: Record<string, OrderItem[]> = recentItemsByOrder
+    const missingIds = allOrderIds.filter((id) => !allItemsByOrder[id])
+    if (missingIds.length > 0) {
+      const { data: missingItems } = await supabase
+        .from("order_items")
+        .select("mp_item_nr, fbpi_order_nr, partner_sku, mp_status, integration_status, price")
+        .in("fbpi_order_nr", missingIds)
+      if (missingItems) {
+        for (const it of missingItems as OrderItem[]) {
+          if (!allItemsByOrder[it.fbpi_order_nr]) allItemsByOrder[it.fbpi_order_nr] = []
+          allItemsByOrder[it.fbpi_order_nr].push(it)
+        }
+      }
+    }
     const recentWithStatus = (recent as unknown as (RecentOrder & { fbpi_order_nr: string | null })[]).map((o) => ({
       ...o,
       displayStatus: computeDisplayStatus(o.status, recentItemsByOrder[o.fbpi_order_nr ?? ""]),
@@ -117,7 +137,10 @@ export function OverviewPage() {
     const activeProducts = products.filter((p) => p.is_active !== false).length
     const totalRevenue = orders
       .filter((o) => isRevenueEligible(o.status))
-      .reduce((sum, o) => sum + Number(o.total_price ?? 0), 0)
+      .reduce((sum, o) => {
+        const items = o.fbpi_order_nr ? allItemsByOrder[o.fbpi_order_nr] : undefined
+        return sum + computeDisplayTotal(o.total_price, items)
+      }, 0)
 
     setKpis([
       {
