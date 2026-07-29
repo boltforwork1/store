@@ -63,6 +63,38 @@ const STATUS_STYLES: Record<string, string> = {
 
 type OrderWithItemCount = Order & { item_count: number; awb_nr: string | null; integration_shipment_nr: string | null }
 
+const STATUS_PREFIXES = ["MP_ITEM_STATUS_", "INTEGRATION_ITEM_STATUS_"]
+const CANCELLED_OR_OOS = ["CANCELLED", "OUT_OF_STOCK", "OOS", "CANCELLED_BY_CUSTOMER"]
+
+function statusStyleKey(raw: string | null): string {
+  if (!raw) return ""
+  let s = raw.toUpperCase()
+  for (const p of STATUS_PREFIXES) {
+    if (s.startsWith(p)) {
+      s = s.slice(p.length)
+      break
+    }
+  }
+  return s
+}
+
+function formatItemStatus(raw: string | null): string {
+  if (!raw) return "—"
+  let s = raw
+  for (const p of STATUS_PREFIXES) {
+    if (s.toUpperCase().startsWith(p)) {
+      s = s.slice(p.length)
+      break
+    }
+  }
+  s = s.replace(/_/g, " ").toLowerCase()
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+function statusBadgeClass(raw: string | null): string {
+  return STATUS_STYLES[statusStyleKey(raw)] ?? "bg-muted text-muted-foreground border-border"
+}
+
 type ProductInfo = {
   name: string | null
   image_url: string | null
@@ -92,6 +124,7 @@ export function OrdersPage() {
   const [labelTarget, setLabelTarget] = useState<OrderWithItemCount | null>(null)
   const [cancelTarget, setCancelTarget] = useState<OrderWithItemCount | null>(null)
   const [cancellingShipment, setCancellingShipment] = useState(false)
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -252,6 +285,21 @@ export function OrdersPage() {
     const items = order.fbpi_order_nr ? itemsByOrder[order.fbpi_order_nr] : undefined
     if (!items || items.length === 0) return false
     return items.some((it) => canMarkOos(it))
+  }
+
+  // Dynamic parent order status: if all line items are cancelled or OOS,
+  // display the order as CANCELLED regardless of the stored status.
+  function displayOrderStatus(order: OrderWithItemCount): string {
+    const items = order.fbpi_order_nr ? itemsByOrder[order.fbpi_order_nr] : undefined
+    if (items && items.length > 0) {
+      const allCancelledOrOos = items.every(
+        (it) =>
+          CANCELLED_OR_OOS.includes(statusStyleKey(it.mp_status)) ||
+          CANCELLED_OR_OOS.includes(statusStyleKey(it.integration_status))
+      )
+      if (allCancelledOrOos) return "CANCELLED"
+    }
+    return order.status ?? "NEW"
   }
 
   function openShipmentDialog(order: OrderWithItemCount) {
@@ -901,15 +949,20 @@ export function OrdersPage() {
                               {order.total_price != null ? `$${Number(order.total_price).toFixed(2)}` : "—"}
                             </TableCell>
                             <TableCell className="pr-6">
-                              <span
-                                className={cn(
-                                  "rounded-full border px-2.5 py-0.5 text-xs font-medium",
-                                  STATUS_STYLES[order.status ?? "NEW"] ??
-                                    "bg-muted text-muted-foreground border-border"
-                                )}
-                              >
-                                {order.status ?? "NEW"}
-                              </span>
+                              {(() => {
+                                const dynStatus = displayOrderStatus(order)
+                                return (
+                                  <span
+                                    className={cn(
+                                      "rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                                      STATUS_STYLES[dynStatus] ??
+                                        "bg-muted text-muted-foreground border-border"
+                                    )}
+                                  >
+                                    {dynStatus}
+                                  </span>
+                                )
+                              })()}
                             </TableCell>
                           </TableRow>
 
@@ -989,7 +1042,18 @@ export function OrdersPage() {
                                             return (
                                             <TableRow key={item.mp_item_nr} className="hover:bg-muted/30">
                                               <TableCell className="pl-4">
-                                                <div className="flex size-10 items-center justify-center overflow-hidden rounded-md bg-muted">
+                                                <div
+                                                  className={cn(
+                                                    "flex size-10 items-center justify-center overflow-hidden rounded-md bg-muted",
+                                                    item.product_image && "cursor-pointer hover:opacity-80"
+                                                  )}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    if (item.product_image) {
+                                                      setLightboxImage({ url: item.product_image, title })
+                                                    }
+                                                  }}
+                                                >
                                                   {item.product_image ? (
                                                     <img
                                                       src={item.product_image}
@@ -1027,24 +1091,20 @@ export function OrdersPage() {
                                                 <span
                                                   className={cn(
                                                     "inline-flex rounded-full border px-2 py-0.5 text-xs font-medium",
-                                                    STATUS_STYLES[(item.mp_status ?? "").toUpperCase()] ??
-                                                      STATUS_STYLES[item.mp_status ?? ""] ??
-                                                      "bg-muted text-muted-foreground border-border"
+                                                    statusBadgeClass(item.mp_status)
                                                   )}
                                                 >
-                                                  {item.mp_status ?? "—"}
+                                                  {formatItemStatus(item.mp_status)}
                                                 </span>
                                               </TableCell>
                                               <TableCell>
                                                 <span
                                                   className={cn(
                                                     "inline-flex rounded-full border px-2 py-0.5 text-xs font-medium",
-                                                    STATUS_STYLES[(item.integration_status ?? "").toUpperCase()] ??
-                                                      STATUS_STYLES[item.integration_status ?? ""] ??
-                                                      "bg-muted text-muted-foreground border-border"
+                                                    statusBadgeClass(item.integration_status)
                                                   )}
                                                 >
-                                                  {item.integration_status ?? "—"}
+                                                  {formatItemStatus(item.integration_status)}
                                                 </span>
                                               </TableCell>
                                               <TableCell className="pr-4 text-right font-semibold tabular-nums">
@@ -1222,6 +1282,29 @@ export function OrdersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Image Lightbox Dialog */}
+      <Dialog
+        open={lightboxImage !== null}
+        onOpenChange={(open) => {
+          if (!open) setLightboxImage(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-md p-2">
+          <DialogHeader className="p-4 pb-2">
+            <DialogTitle className="text-sm font-medium">{lightboxImage?.title}</DialogTitle>
+          </DialogHeader>
+          {lightboxImage && (
+            <div className="flex items-center justify-center rounded-lg bg-muted/30 p-2">
+              <img
+                src={lightboxImage.url}
+                alt={lightboxImage.title}
+                className="max-h-[70vh] w-full rounded-md object-contain"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Create Shipment Dialog */}
       <Dialog
