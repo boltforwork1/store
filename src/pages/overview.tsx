@@ -30,6 +30,8 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { Skeleton } from "@/components/ui/skeleton"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
+import { computeDisplayStatus, statusBadgeClass } from "@/lib/order-status"
+import type { OrderItem } from "@/lib/types"
 
 type Kpi = {
   title: string
@@ -46,17 +48,11 @@ type WeeklyPoint = { day: string; orders: number }
 type RecentOrder = {
   id: string
   noon_order_id: string | null
+  fbpi_order_nr: string | null
   total_price: number | null
   status: string | null
   order_date: string | null
-}
-
-const STATUS_STYLES: Record<string, string> = {
-  Completed: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300",
-  Processing: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300",
-  Shipped: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-300",
-  Pending: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300",
-  Acknowledged: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300",
+  displayStatus: string
 }
 
 const revenueChartConfig = {
@@ -84,7 +80,7 @@ export function OverviewPage() {
       supabase.from("orders").select("id, noon_order_id, total_price, status, order_date, customer_country_code"),
       supabase
         .from("orders")
-        .select("id, noon_order_id, total_price, status, order_date, customer_country_code")
+        .select("id, noon_order_id, fbpi_order_nr, total_price, status, order_date, customer_country_code")
         .order("order_date", { ascending: false })
         .limit(5),
     ])
@@ -92,6 +88,29 @@ export function OverviewPage() {
     const products = productsRes.data ?? []
     const orders = ordersRes.data ?? []
     const recent = recentRes.data ?? []
+
+    // Fetch order_items for the recent orders so we can compute the dynamic
+    // display status (e.g. show CANCELLED when all items are OOS).
+    const recentIds = (recent as unknown as { fbpi_order_nr: string | null }[])
+      .map((o) => o.fbpi_order_nr)
+      .filter((v): v is string => v != null)
+    let recentItemsByOrder: Record<string, OrderItem[]> = {}
+    if (recentIds.length > 0) {
+      const { data: recentItems } = await supabase
+        .from("order_items")
+        .select("mp_item_nr, fbpi_order_nr, partner_sku, mp_status, integration_status, price")
+        .in("fbpi_order_nr", recentIds)
+      if (recentItems) {
+        for (const it of recentItems as OrderItem[]) {
+          if (!recentItemsByOrder[it.fbpi_order_nr]) recentItemsByOrder[it.fbpi_order_nr] = []
+          recentItemsByOrder[it.fbpi_order_nr].push(it)
+        }
+      }
+    }
+    const recentWithStatus = (recent as unknown as (RecentOrder & { fbpi_order_nr: string | null })[]).map((o) => ({
+      ...o,
+      displayStatus: computeDisplayStatus(o.status, recentItemsByOrder[o.fbpi_order_nr ?? ""]),
+    }))
 
     const activeProducts = products.filter((p) => p.is_active !== false).length
     const totalRevenue = orders.reduce((sum, o) => sum + Number(o.total_price ?? 0), 0)
@@ -134,7 +153,7 @@ export function OverviewPage() {
     setRevenueData([])
     setCategoryData([])
     setWeeklyOrders([])
-    setRecentOrders(recent)
+    setRecentOrders(recentWithStatus)
     setLoading(false)
   }
 
@@ -381,10 +400,10 @@ export function OverviewPage() {
                     <span
                       className={cn(
                         "shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium",
-                        STATUS_STYLES[order.status ?? "Pending"] ?? "bg-muted text-muted-foreground border-border"
+                        statusBadgeClass(order.displayStatus)
                       )}
                     >
-                      {order.status ?? "Pending"}
+                      {order.displayStatus}
                     </span>
                   </div>
                 ))}
