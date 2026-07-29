@@ -30,7 +30,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { Skeleton } from "@/components/ui/skeleton"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
-import { computeDisplayStatus, statusBadgeClass } from "@/lib/order-status"
+import { computeDisplayStatus, statusBadgeClass, computeDisplayTotal } from "@/lib/order-status"
 import type { OrderItem } from "@/lib/types"
 
 type Kpi = {
@@ -53,6 +53,7 @@ type RecentOrder = {
   status: string | null
   order_date: string | null
   displayStatus: string
+  displayTotal: number
 }
 
 const revenueChartConfig = {
@@ -110,6 +111,7 @@ export function OverviewPage() {
     const recentWithStatus = (recent as unknown as (RecentOrder & { fbpi_order_nr: string | null })[]).map((o) => ({
       ...o,
       displayStatus: computeDisplayStatus(o.status, recentItemsByOrder[o.fbpi_order_nr ?? ""]),
+      displayTotal: computeDisplayTotal(o.total_price, recentItemsByOrder[o.fbpi_order_nr ?? ""]),
     }))
 
     const activeProducts = products.filter((p) => p.is_active !== false).length
@@ -395,7 +397,7 @@ export function OverviewPage() {
                       </p>
                     </div>
                     <span className="hidden shrink-0 text-sm font-semibold tabular-nums sm:block">
-                      {order.total_price != null ? `$${Number(order.total_price).toFixed(2)}` : "—"}
+                      {order.displayTotal > 0 ? `${order.displayTotal.toFixed(2)}` : "—"}
                     </span>
                     <span
                       className={cn(

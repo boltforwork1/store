@@ -72,3 +72,19 @@ export function computeDisplayStatus(
   }
   return storedStatus ?? "NEW"
 }
+
+/**
+ * Dynamic parent order total: if the stored total is missing, null, or zero,
+ * fall back to summing the line-item prices so a total is always shown.
+ */
+export function computeDisplayTotal(
+  storedTotal: number | null,
+  items: OrderItem[] | undefined,
+): number {
+  if (storedTotal != null && storedTotal > 0) return storedTotal
+  if (items && items.length > 0) {
+    const sum = items.reduce((acc, it) => acc + Number(it.price ?? 0), 0)
+    if (sum > 0) return sum
+  }
+  return 0
+}

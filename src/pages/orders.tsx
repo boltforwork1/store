@@ -45,6 +45,7 @@ import {
   formatItemStatus,
   statusBadgeClass,
   computeDisplayStatus,
+  computeDisplayTotal,
 } from "@/lib/order-status"
 
 type OrderWithItemCount = Order & { item_count: number; awb_nr: string | null; integration_shipment_nr: string | null }
@@ -922,7 +923,11 @@ export function OrdersPage() {
                               {order.item_count}
                             </TableCell>
                             <TableCell className="text-right font-semibold tabular-nums">
-                              {order.total_price != null ? `$${Number(order.total_price).toFixed(2)}` : "—"}
+                              {(() => {
+                                const items = order.fbpi_order_nr ? itemsByOrder[order.fbpi_order_nr] : undefined
+                                const total = computeDisplayTotal(order.total_price, items)
+                                return total > 0 ? `${total.toFixed(2)}` : "—"
+                              })()}
                             </TableCell>
                             <TableCell className="pr-6">
                               {(() => {
