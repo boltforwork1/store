@@ -30,7 +30,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { Skeleton } from "@/components/ui/skeleton"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
-import { computeDisplayStatus, statusBadgeClass, computeDisplayTotal } from "@/lib/order-status"
+import { computeDisplayStatus, statusBadgeClass, computeDisplayTotal, isRevenueEligible } from "@/lib/order-status"
 import type { OrderItem } from "@/lib/types"
 
 type Kpi = {
@@ -115,16 +115,18 @@ export function OverviewPage() {
     }))
 
     const activeProducts = products.filter((p) => p.is_active !== false).length
-    const totalRevenue = orders.reduce((sum, o) => sum + Number(o.total_price ?? 0), 0)
+    const totalRevenue = orders
+      .filter((o) => isRevenueEligible(o.status))
+      .reduce((sum, o) => sum + Number(o.total_price ?? 0), 0)
 
     setKpis([
       {
         title: "Total Revenue",
-        value: totalRevenue > 0 ? `$${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—",
+        value: `${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         change: null,
         trend: null,
         icon: DollarSign,
-        description: "from synced orders",
+        description: "from confirmed & shipped orders",
       },
       {
         title: "Total Orders",

@@ -46,6 +46,7 @@ import {
   statusBadgeClass,
   computeDisplayStatus,
   computeDisplayTotal,
+  isRevenueEligible,
 } from "@/lib/order-status"
 
 type OrderWithItemCount = Order & { item_count: number; awb_nr: string | null; integration_shipment_nr: string | null }
@@ -691,7 +692,9 @@ export function OrdersPage() {
     return matchesTab && matchesSearch
   })
 
-  const totalRevenue = orders.reduce((sum, o) => sum + Number(o.total_price ?? 0), 0)
+  const totalRevenue = orders
+    .filter((o) => isRevenueEligible(o.status))
+    .reduce((sum, o) => sum + Number(o.total_price ?? 0), 0)
 
   if (loading) {
     return (
@@ -778,15 +781,13 @@ export function OrdersPage() {
               </div>
               <div className="min-w-0">
                 <CardTitle className="text-sm">Total Revenue</CardTitle>
-                <CardDescription className="text-xs">Sum of all orders</CardDescription>
+                <CardDescription className="text-xs">Confirmed & shipped orders</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent className="pt-0">
             <p className="text-2xl font-bold tabular-nums">
-              {totalRevenue > 0
-                ? `$${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                : "—"}
+              {`${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </p>
           </CardContent>
         </Card>

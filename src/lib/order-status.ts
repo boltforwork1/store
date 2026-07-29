@@ -25,6 +25,17 @@ const STATUS_PREFIXES = ["MP_ITEM_STATUS_", "INTEGRATION_ITEM_STATUS_"]
 
 export const CANCELLED_OR_OOS = ["CANCELLED", "OUT_OF_STOCK", "OOS", "CANCELLED_BY_CUSTOMER"]
 
+export const REVENUE_ELIGIBLE_STATUSES = [
+  "SHIPPED",
+  "CONFIRMED",
+  "ACKNOWLEDGED",
+  "COMPLETED",
+]
+
+export function isRevenueEligible(status: string | null): boolean {
+  return REVENUE_ELIGIBLE_STATUSES.includes(statusStyleKey(status))
+}
+
 export function statusStyleKey(raw: string | null): string {
   if (!raw) return ""
   let s = raw.toUpperCase()
