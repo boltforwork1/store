@@ -156,15 +156,25 @@ export function OrdersPage() {
         .filter((k): k is string => typeof k === "string" && k.trim() !== "")
 
       let countMap: Record<string, number> = {}
+      const statusItemsByOrder: Record<string, EnrichedOrderItem[]> = {}
       if (orderKeys.length > 0) {
         const { data: itemsData, error: itemsError } = await supabase
           .from("order_items")
-          .select("fbpi_order_nr")
+          .select("mp_item_nr, fbpi_order_nr, partner_sku, mp_status, integration_status, price")
           .in("fbpi_order_nr", orderKeys)
+          .order("mp_item_nr")
 
         if (!itemsError && itemsData) {
-          for (const it of itemsData as { fbpi_order_nr: string }[]) {
+          for (const it of itemsData as OrderItem[]) {
             countMap[it.fbpi_order_nr] = (countMap[it.fbpi_order_nr] ?? 0) + 1
+            if (!statusItemsByOrder[it.fbpi_order_nr]) {
+              statusItemsByOrder[it.fbpi_order_nr] = []
+            }
+            statusItemsByOrder[it.fbpi_order_nr].push({
+              ...it,
+              product_name: null,
+              product_image: null,
+            })
           }
         }
       }
@@ -177,6 +187,19 @@ export function OrdersPage() {
       })) as OrderWithItemCount[]
 
       setOrders(rows)
+      // Seed itemsByOrder with status-only data for every order so the
+      // dynamic parent status (displayOrderStatus) is correct even before a
+      // row is expanded. Product name/image enrichment happens lazily on expand.
+      setItemsByOrder((prev) => {
+        const next: Record<string, EnrichedOrderItem[]> = { ...prev }
+        for (const [k, v] of Object.entries(statusItemsByOrder)) {
+          // Don't overwrite already-enriched items (e.g. from a prior expand).
+          if (!next[k] || next[k].every((it) => it.product_name === null && it.product_image === null)) {
+            next[k] = v
+          }
+        }
+        return next
+      })
     }
     setLoading(false)
   }, [])
@@ -541,7 +564,13 @@ export function OrdersPage() {
     setExpandedRow(key)
 
     if (!order.fbpi_order_nr) return
-    if (itemsByOrder[order.fbpi_order_nr]) return // already loaded
+    // Skip re-fetch only when items are already fully enriched (have product
+    // name/image). Status-only seeds from load() lack enrichment, so we still
+    // fetch + merge product details on first expand.
+    const existing = itemsByOrder[order.fbpi_order_nr]
+    if (existing && existing.some((it) => it.product_name !== null || it.product_image !== null)) {
+      return
+    }
 
     setLoadingItems(order.fbpi_order_nr)
     const { data, error } = await supabase
