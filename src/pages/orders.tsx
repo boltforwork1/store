@@ -272,16 +272,19 @@ export function OrdersPage() {
   ])
 
   function canMarkOos(item: OrderItem): boolean {
-    const integration = (item.integration_status ?? "").toUpperCase()
-    const mp = (item.mp_status ?? "").toUpperCase()
+    const integration = statusStyleKey(item.integration_status)
+    const mp = statusStyleKey(item.mp_status)
     if (OOS_BLOCKED_STATUSES.has(integration)) return false
     if (OOS_BLOCKED_STATUSES.has(mp)) return false
     return true
   }
 
-  // An order is fulfillable if it has at least one item that is not shipped,
-  // cancelled, or out of stock.
+  const ORDER_TERMINAL_STATUSES = new Set(["CANCELLED", "SHIPPED", "COMPLETED"])
+
+  // An order is fulfillable if it is not in a terminal state and has at least
+  // one item that is not shipped, cancelled, or out of stock.
   function isOrderFulfillable(order: OrderWithItemCount): boolean {
+    if (ORDER_TERMINAL_STATUSES.has(displayOrderStatus(order))) return false
     const items = order.fbpi_order_nr ? itemsByOrder[order.fbpi_order_nr] : undefined
     if (!items || items.length === 0) return false
     return items.some((it) => canMarkOos(it))
