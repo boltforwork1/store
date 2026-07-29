@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react"
-import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, TriangleAlert as AlertTriangle, Truck, PackageCheck, Wrench, Printer, X, ImageOff } from "lucide-react"
+import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, TriangleAlert as AlertTriangle, Truck, PackageCheck, Wrench, Printer, X, ImageOff, Trash2 } from "lucide-react"
 import { ShippingLabel } from "@/components/shipping-label"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -61,6 +61,8 @@ export function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [creatingTestOrder, setCreatingTestOrder] = useState(false)
+  const [clearingTestOrders, setClearingTestOrders] = useState(false)
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
   const [orders, setOrders] = useState<OrderWithItemCount[]>([])
   const [activeTab, setActiveTab] = useState("all")
   const [search, setSearch] = useState("")
@@ -197,6 +199,60 @@ export function OrdersPage() {
   function handleSyncOrders(e: React.FormEvent) {
     e.preventDefault()
     void runSyncOrders(warehouseCode.trim())
+  }
+
+  async function handleClearTestOrders() {
+    setClearingTestOrders(true)
+    const toastId = toast.loading("Clearing test orders…")
+
+    try {
+      const { data: testOrders, error: fetchError } = await supabase
+        .from("orders")
+        .select("fbpi_order_nr")
+        .like("fbpi_order_nr", "TEST-%")
+
+      if (fetchError) {
+        toast.error(fetchError.message, { id: toastId })
+        return
+      }
+
+      const testOrderNrs = (testOrders ?? [])
+        .map((o) => o.fbpi_order_nr)
+        .filter((nr): nr is string => nr != null)
+
+      if (testOrderNrs.length === 0) {
+        toast.info("No test orders found to clear.", { id: toastId })
+        return
+      }
+
+      const { error: itemsError } = await supabase
+        .from("order_items")
+        .delete()
+        .in("fbpi_order_nr", testOrderNrs)
+
+      if (itemsError) {
+        toast.error(itemsError.message, { id: toastId })
+        return
+      }
+
+      const { error: ordersError } = await supabase
+        .from("orders")
+        .delete()
+        .in("fbpi_order_nr", testOrderNrs)
+
+      if (ordersError) {
+        toast.error(ordersError.message, { id: toastId })
+        return
+      }
+
+      toast.success(`Deleted ${testOrderNrs.length} test order${testOrderNrs.length === 1 ? "" : "s"}.`, { id: toastId })
+      setClearConfirmOpen(false)
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
+    } finally {
+      setClearingTestOrders(false)
+    }
   }
 
   async function handleCreateTestOrder() {
@@ -782,6 +838,20 @@ export function OrdersPage() {
               )}
               {creatingTestOrder ? "Creating…" : "Create Test Order"}
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={syncing || creatingTestOrder || clearingTestOrders}
+              onClick={() => setClearConfirmOpen(true)}
+              className="gap-1.5 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950 sm:w-auto"
+            >
+              {clearingTestOrders ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              {clearingTestOrders ? "Clearing…" : "Clear Test Orders"}
+            </Button>
           </form>
         </CardContent>
       </Card>
@@ -1258,6 +1328,49 @@ export function OrdersPage() {
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 "Yes, mark as Out of Stock"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Clear Test Orders Confirmation Dialog */}
+      <AlertDialog
+        open={clearConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open && !clearingTestOrders) {
+            setClearConfirmOpen(false)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="size-5 text-red-600" />
+              Clear Test Orders?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all orders whose order number starts
+              with "TEST-" along with their associated line items. This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearingTestOrders}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleClearTestOrders()
+              }}
+              disabled={clearingTestOrders}
+              className="bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600"
+            >
+              {clearingTestOrders ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                "Yes, clear test orders"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
