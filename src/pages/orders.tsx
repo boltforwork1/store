@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react"
-import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, TriangleAlert as AlertTriangle, Truck, PackageCheck, Wrench, Printer, X } from "lucide-react"
+import { Search, Download, RefreshCw, Database, Loader as Loader2, ShoppingCart, Warehouse, ChevronRight, ChevronDown, Boxes, ListFilter as Filter, Ban, TriangleAlert as AlertTriangle, Truck, PackageCheck, Wrench, Printer, X, ImageOff } from "lucide-react"
 import { ShippingLabel } from "@/components/shipping-label"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -41,18 +41,34 @@ import type { Order, OrderItem } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 const STATUS_STYLES: Record<string, string> = {
-  NEW: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300",
-  Fetched: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300",
-  Completed: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300",
-  Processing: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300",
-  Shipped: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-300",
-  Pending: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300",
-  Acknowledged: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300",
-  Cancelled: "bg-red-50 text-red-600 border-red-200 dark:bg-red-950 dark:text-red-300",
+  NEW: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900",
+  PENDING: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900",
+  Pending: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900",
+  Fetched: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900",
+  Processing: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900",
+  ACKNOWLEDGED: "bg-green-100 text-green-800 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-900",
+  Acknowledged: "bg-green-100 text-green-800 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-900",
+  CONFIRMED: "bg-green-100 text-green-800 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-900",
+  Confirmed: "bg-green-100 text-green-800 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-900",
+  Completed: "bg-green-100 text-green-800 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-900",
+  Shipped: "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-300 dark:border-yellow-900",
+  SHIPPED: "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-300 dark:border-yellow-900",
+  CANCELLED: "bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900",
+  Cancelled: "bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900",
+  OUT_OF_STOCK: "bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900",
+  OOS: "bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900",
+  CANCELLED_BY_CUSTOMER: "bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900",
   Refunded: "bg-muted text-muted-foreground border-border",
 }
 
 type OrderWithItemCount = Order & { item_count: number; awb_nr: string | null; integration_shipment_nr: string | null }
+
+type ProductInfo = {
+  name: string | null
+  image_url: string | null
+}
+
+type EnrichedOrderItem = OrderItem & { product_name: string | null; product_image: string | null }
 
 export function OrdersPage() {
   const [loading, setLoading] = useState(true)
@@ -63,7 +79,7 @@ export function OrdersPage() {
   const [search, setSearch] = useState("")
   const [warehouseCode, setWarehouseCode] = useState("W00210108EG")
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
-  const [itemsByOrder, setItemsByOrder] = useState<Record<string, OrderItem[]>>({})
+  const [itemsByOrder, setItemsByOrder] = useState<Record<string, EnrichedOrderItem[]>>({})
   const [loadingItems, setLoadingItems] = useState<string | null>(null)
   const [oosTarget, setOosTarget] = useState<{ fbpi_order_nr: string; mp_item_nr: string } | null>(null)
   const [markingOos, setMarkingOos] = useState(false)
@@ -485,12 +501,52 @@ export function OrdersPage() {
 
     if (error) {
       toast.error("Failed to load order items: " + error.message)
-    } else {
-      setItemsByOrder((prev) => ({
-        ...prev,
-        [order.fbpi_order_nr as string]: (data ?? []) as OrderItem[],
-      }))
+      setLoadingItems(null)
+      return
     }
+
+    const rawItems = (data ?? []) as OrderItem[]
+
+    // Frontend merge: fetch matching products by partner_sku in a separate
+    // query (no relational join), then merge name + image into the items.
+    const uniqueSkus = Array.from(
+      new Set(
+        rawItems
+          .map((it) => it.partner_sku)
+          .filter((s): s is string => typeof s === "string" && s.trim() !== "")
+      )
+    )
+
+    const productMap = new Map<string, ProductInfo>()
+    if (uniqueSkus.length > 0) {
+      const { data: productRows, error: productError } = await supabase
+        .from("products")
+        .select("partner_sku, name, image_url")
+        .in("partner_sku", uniqueSkus)
+
+      if (!productError && productRows) {
+        for (const row of productRows as { partner_sku: string; name: string | null; image_url: string | null }[]) {
+          productMap.set(row.partner_sku, {
+            name: row.name,
+            image_url: row.image_url,
+          })
+        }
+      }
+    }
+
+    const enriched: EnrichedOrderItem[] = rawItems.map((it) => {
+      const info = it.partner_sku ? productMap.get(it.partner_sku) : undefined
+      return {
+        ...it,
+        product_name: info?.name ?? null,
+        product_image: info?.image_url ?? null,
+      }
+    })
+
+    setItemsByOrder((prev) => ({
+      ...prev,
+      [order.fbpi_order_nr as string]: enriched,
+    }))
     setLoadingItems(null)
   }
 
@@ -919,8 +975,8 @@ export function OrdersPage() {
                                       <Table>
                                         <TableHeader>
                                           <TableRow className="hover:bg-transparent">
-                                            <TableHead className="pl-4">Item Number</TableHead>
-                                            <TableHead>Partner SKU</TableHead>
+                                            <TableHead className="pl-4 w-16">Image</TableHead>
+                                            <TableHead>Product</TableHead>
                                             <TableHead>MP Status</TableHead>
                                             <TableHead>Integration Status</TableHead>
                                             <TableHead className="pr-4 text-right">Price</TableHead>
@@ -928,19 +984,68 @@ export function OrdersPage() {
                                           </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                          {items.map((item) => (
+                                          {items.map((item) => {
+                                            const title = item.product_name || item.partner_sku || item.mp_item_nr
+                                            return (
                                             <TableRow key={item.mp_item_nr} className="hover:bg-muted/30">
-                                              <TableCell className="pl-4 font-mono text-xs">
-                                                {item.mp_item_nr}
-                                              </TableCell>
-                                              <TableCell className="font-mono text-xs">
-                                                {item.partner_sku ?? "—"}
+                                              <TableCell className="pl-4">
+                                                <div className="flex size-10 items-center justify-center overflow-hidden rounded-md bg-muted">
+                                                  {item.product_image ? (
+                                                    <img
+                                                      src={item.product_image}
+                                                      alt={title}
+                                                      loading="lazy"
+                                                      className="size-full object-cover"
+                                                      onError={(e) => {
+                                                        const t = e.currentTarget
+                                                        t.style.display = "none"
+                                                        const fb = t.nextElementSibling
+                                                        if (fb) (fb as HTMLElement).style.display = "flex"
+                                                      }}
+                                                    />
+                                                  ) : null}
+                                                  <div
+                                                    className="flex size-full items-center justify-center"
+                                                    style={item.product_image ? { display: "none" } : undefined}
+                                                  >
+                                                    <ImageOff className="size-4 text-muted-foreground/50" />
+                                                  </div>
+                                                </div>
                                               </TableCell>
                                               <TableCell>
-                                                <span className="text-xs">{item.mp_status ?? "—"}</span>
+                                                <div className="flex flex-col gap-0.5">
+                                                  <span className="text-sm font-medium leading-tight">{title}</span>
+                                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                                                    {item.partner_sku && (
+                                                      <span className="font-mono">SKU: {item.partner_sku}</span>
+                                                    )}
+                                                    <span className="font-mono">#{item.mp_item_nr}</span>
+                                                  </div>
+                                                </div>
                                               </TableCell>
                                               <TableCell>
-                                                <span className="text-xs">{item.integration_status ?? "—"}</span>
+                                                <span
+                                                  className={cn(
+                                                    "inline-flex rounded-full border px-2 py-0.5 text-xs font-medium",
+                                                    STATUS_STYLES[(item.mp_status ?? "").toUpperCase()] ??
+                                                      STATUS_STYLES[item.mp_status ?? ""] ??
+                                                      "bg-muted text-muted-foreground border-border"
+                                                  )}
+                                                >
+                                                  {item.mp_status ?? "—"}
+                                                </span>
+                                              </TableCell>
+                                              <TableCell>
+                                                <span
+                                                  className={cn(
+                                                    "inline-flex rounded-full border px-2 py-0.5 text-xs font-medium",
+                                                    STATUS_STYLES[(item.integration_status ?? "").toUpperCase()] ??
+                                                      STATUS_STYLES[item.integration_status ?? ""] ??
+                                                      "bg-muted text-muted-foreground border-border"
+                                                  )}
+                                                >
+                                                  {item.integration_status ?? "—"}
+                                                </span>
                                               </TableCell>
                                               <TableCell className="pr-4 text-right font-semibold tabular-nums">
                                                 {item.price != null ? `${Number(item.price).toFixed(2)}` : "—"}
@@ -972,7 +1077,8 @@ export function OrdersPage() {
                                                 )}
                                               </TableCell>
                                             </TableRow>
-                                          ))}
+                                            )
+                                          })}
                                         </TableBody>
                                       </Table>
                                     </div>
