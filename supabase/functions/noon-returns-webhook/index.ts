@@ -251,6 +251,31 @@ Deno.serve(async (req: Request) => {
         // doesn't retry, but surface the issue in the response body.
         return ack({ ok: true, warning: "return stored but items insert failed", item_count: 0 })
       }
+
+      // Sync the returned items back to the existing order_items table.
+      // The Noon return-references response carries `purchase_item_nr`, which
+      // corresponds to `mp_item_nr` on the original order line item. Mark each
+      // matching order item as RETURNED so the unified Orders view reflects the
+      // return without a separate Returns page.
+      const purchaseItemNrs = rows
+        .map((r) => r.purchase_item_nr)
+        .filter((nr): nr is string => nr !== null)
+
+      let syncedCount = 0
+      if (purchaseItemNrs.length > 0) {
+        const { error: syncError } = await supabase
+          .from("order_items")
+          .update({ integration_status: "RETURNED" })
+          .in("mp_item_nr", purchaseItemNrs)
+
+        if (syncError) {
+          console.error(
+            `Failed to sync returned items to order_items for barcode ${barcode}: ${syncError.message}`
+          )
+        } else {
+          syncedCount = purchaseItemNrs.length
+        }
+      }
     }
 
     // 5. Always return 200 OK to acknowledge the webhook.

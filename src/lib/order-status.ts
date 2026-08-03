@@ -18,12 +18,16 @@ export const STATUS_STYLES: Record<string, string> = {
   OUT_OF_STOCK: "bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900",
   OOS: "bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900",
   CANCELLED_BY_CUSTOMER: "bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900",
+  RETURNED: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-900",
+  Returned: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-900",
   Refunded: "bg-muted text-muted-foreground border-border",
 }
 
 const STATUS_PREFIXES = ["MP_ITEM_STATUS_", "INTEGRATION_ITEM_STATUS_"]
 
 export const CANCELLED_OR_OOS = ["CANCELLED", "OUT_OF_STOCK", "OOS", "CANCELLED_BY_CUSTOMER"]
+
+export const RETURNED_STATUSES = ["RETURNED", "REFUNDED"]
 
 export const REVENUE_ELIGIBLE_STATUSES = [
   "SHIPPED",
@@ -66,14 +70,23 @@ export function statusBadgeClass(raw: string | null): string {
 }
 
 /**
- * Dynamic parent order status: if all line items are cancelled or OOS,
- * display the order as CANCELLED regardless of the stored status.
+ * Dynamic parent order status:
+ * - if all line items are RETURNED/REFUNDED, display RETURNED.
+ * - else if all line items are cancelled or OOS, display CANCELLED.
+ * Returns the stored status otherwise.
  */
 export function computeDisplayStatus(
   storedStatus: string | null,
   items: OrderItem[] | undefined,
 ): string {
   if (items && items.length > 0) {
+    const allReturned = items.every(
+      (it) =>
+        RETURNED_STATUSES.includes(statusStyleKey(it.integration_status)) ||
+        RETURNED_STATUSES.includes(statusStyleKey(it.mp_status))
+    )
+    if (allReturned) return "RETURNED"
+
     const allCancelledOrOos = items.every(
       (it) =>
         CANCELLED_OR_OOS.includes(statusStyleKey(it.mp_status)) ||

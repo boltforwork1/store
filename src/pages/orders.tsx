@@ -315,7 +315,7 @@ export function OrdersPage() {
     return true
   }
 
-  const ORDER_TERMINAL_STATUSES = new Set(["CANCELLED", "SHIPPED", "COMPLETED"])
+  const ORDER_TERMINAL_STATUSES = new Set(["CANCELLED", "SHIPPED", "COMPLETED", "RETURNED"])
 
   // An order is fulfillable if it is not in a terminal state and has at least
   // one item that is not shipped, cancelled, or out of stock.
