@@ -3,6 +3,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  Pencil,
   Loader as Loader2,
   TrendingUp,
   TrendingDown,
@@ -74,7 +75,8 @@ function fmt(n: number): string {
 export function AccountingPage() {
   const [loading, setLoading] = useState(true)
   const [records, setRecords] = useState<FinanceRecord[]>([])
-  const [addOpen, setAddOpen] = useState(false)
+  const [formOpen, setFormOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<FinanceRecord | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<FinanceRecord | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -175,7 +177,28 @@ export function AccountingPage() {
     setFormSelling("")
   }
 
-  async function handleAddRecord(e: React.FormEvent) {
+  function populateForm(record: FinanceRecord) {
+    setFormDate(record.date)
+    setFormSku(record.sku)
+    setFormName(record.product_name)
+    setFormQty(String(record.quantity))
+    setFormCost(String(record.cost_price))
+    setFormSelling(String(record.selling_price))
+  }
+
+  function openAddForm() {
+    setEditTarget(null)
+    resetForm()
+    setFormOpen(true)
+  }
+
+  function openEditForm(record: FinanceRecord) {
+    setEditTarget(record)
+    populateForm(record)
+    setFormOpen(true)
+  }
+
+  async function handleSubmitRecord(e: React.FormEvent) {
     e.preventDefault()
 
     const sku = formSku.trim()
@@ -191,24 +214,49 @@ export function AccountingPage() {
     if (!Number.isFinite(selling) || selling < 0) { toast.error("Selling price must be a valid number"); return }
 
     setSaving(true)
-    const { error } = await supabase.from("finance_records").insert({
-      date: formDate,
-      sku,
-      product_name: name,
-      quantity: qty,
-      cost_price: cost,
-      selling_price: selling,
-    })
 
-    if (error) {
-      toast.error("Failed to add record: " + error.message)
-      setSaving(false)
-      return
+    if (editTarget) {
+      const { error } = await supabase
+        .from("finance_records")
+        .update({
+          date: formDate,
+          sku,
+          product_name: name,
+          quantity: qty,
+          cost_price: cost,
+          selling_price: selling,
+        })
+        .eq("id", editTarget.id)
+
+      if (error) {
+        toast.error("Failed to update record: " + error.message)
+        setSaving(false)
+        return
+      }
+
+      toast.success("Finance record updated")
+    } else {
+      const { error } = await supabase.from("finance_records").insert({
+        date: formDate,
+        sku,
+        product_name: name,
+        quantity: qty,
+        cost_price: cost,
+        selling_price: selling,
+      })
+
+      if (error) {
+        toast.error("Failed to add record: " + error.message)
+        setSaving(false)
+        return
+      }
+
+      toast.success("Finance record added")
     }
 
-    toast.success("Finance record added")
     resetForm()
-    setAddOpen(false)
+    setFormOpen(false)
+    setEditTarget(null)
     setSaving(false)
     await load()
   }
@@ -315,7 +363,7 @@ export function AccountingPage() {
           <Button
             size="sm"
             className="gap-1.5"
-            onClick={() => { resetForm(); setAddOpen(true) }}
+            onClick={openAddForm}
           >
             <Plus className="size-3.5" />
             Add Record
@@ -465,15 +513,26 @@ export function AccountingPage() {
                         {isPositive ? "+" : ""}{fmt(np)}
                       </td>
                       <td className="px-4 py-3 text-center whitespace-nowrap">
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => setDeleteTarget(r)}
-                          aria-label="Delete record"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            className="text-blue-600 hover:bg-blue-100 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-950"
+                            onClick={() => openEditForm(r)}
+                            aria-label="Edit record"
+                          >
+                            <Pencil className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setDeleteTarget(r)}
+                            aria-label="Delete record"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -506,20 +565,21 @@ export function AccountingPage() {
         </div>
       )}
 
-      {/* Add Record Dialog */}
-      <Dialog open={addOpen} onOpenChange={(open) => { if (!saving) setAddOpen(open) }}>
+      {/* Add/Edit Record Dialog */}
+      <Dialog open={formOpen} onOpenChange={(open) => { if (!saving) { setFormOpen(open); if (!open) setEditTarget(null) } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Wallet className="size-5" />
-              Add Finance Record
+              {editTarget ? <Pencil className="size-5" /> : <Wallet className="size-5" />}
+              {editTarget ? "Edit Finance Record" : "Add Finance Record"}
             </DialogTitle>
             <DialogDescription>
-              Enter the sale details. Net profit is calculated automatically as
-              (Selling Price − Cost Price) × Quantity.
+              {editTarget
+                ? "Update the sale details. Net profit recalculates automatically as (Selling Price − Cost Price) × Quantity."
+                : "Enter the sale details. Net profit is calculated automatically as (Selling Price − Cost Price) × Quantity."}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleAddRecord} className="space-y-4">
+          <form onSubmit={handleSubmitRecord} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="fin-date">Date <span className="text-destructive">*</span></Label>
@@ -618,14 +678,14 @@ export function AccountingPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setAddOpen(false)}
+                onClick={() => { setFormOpen(false); setEditTarget(null) }}
                 disabled={saving}
               >
                 Cancel
               </Button>
               <Button type="submit" disabled={saving} className="gap-1.5">
-                {saving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-                {saving ? "Saving…" : "Add Record"}
+                {saving ? <Loader2 className="size-4 animate-spin" /> : editTarget ? <Pencil className="size-4" /> : <Plus className="size-4" />}
+                {saving ? "Saving…" : editTarget ? "Save Changes" : "Add Record"}
               </Button>
             </DialogFooter>
           </form>
@@ -662,3 +722,6 @@ export function AccountingPage() {
     </div>
   )
 }
+
+
+export { AccountingPage }
