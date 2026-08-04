@@ -3,6 +3,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  Pencil,
   Loader as Loader2,
   Package,
   Upload,
@@ -87,7 +88,8 @@ function stockBadge(qty: number): StockLevel {
 export function InternalStockPage() {
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<InventoryItem[]>([])
-  const [addOpen, setAddOpen] = useState(false)
+  const [formOpen, setFormOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<InventoryItem | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<InventoryItem | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -126,7 +128,29 @@ export function InternalStockPage() {
     setFormCost("")
     setFormFile(null)
     setFormPreview(null)
+    setEditTarget(null)
     if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  function populateForm(item: InventoryItem) {
+    setFormName(item.product_name)
+    setFormQty(String(item.quantity))
+    setFormCost(String(item.cost_price))
+    setFormFile(null)
+    setFormPreview(item.image_url)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  function openAddForm() {
+    setEditTarget(null)
+    resetForm()
+    setFormOpen(true)
+  }
+
+  function openEditForm(item: InventoryItem) {
+    setEditTarget(item)
+    populateForm(item)
+    setFormOpen(true)
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -146,7 +170,7 @@ export function InternalStockPage() {
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  async function handleAddItem(e: React.FormEvent) {
+  async function handleSubmitItem(e: React.FormEvent) {
     e.preventDefault()
 
     const name = formName.trim()
@@ -159,9 +183,9 @@ export function InternalStockPage() {
 
     setSaving(true)
 
-    let imageUrl: string | null = null
+    let imageUrl: string | null = editTarget?.image_url ?? null
 
-    // Upload image to storage if a file was selected
+    // Upload new image to storage if a file was selected
     if (formFile) {
       const { data: userData } = await supabase.auth.getUser()
       const userId = userData.user?.id
@@ -189,24 +213,58 @@ export function InternalStockPage() {
         .getPublicUrl(fileName)
 
       imageUrl = pubData.publicUrl
+
+      // Delete the old image if we're editing and the item had one
+      if (editTarget?.image_url) {
+        try {
+          const oldUrl = new URL(editTarget.image_url)
+          const parts = oldUrl.pathname.split("/inventory_images/")
+          if (parts.length === 2 && parts[1]) {
+            await supabase.storage.from("inventory_images").remove([decodeURIComponent(parts[1])])
+          }
+        } catch {
+          // Old image cleanup is best-effort
+        }
+      }
     }
 
-    const { error } = await supabase.from("internal_inventory").insert({
-      product_name: name,
-      quantity: qty,
-      cost_price: cost,
-      image_url: imageUrl,
-    })
+    if (editTarget) {
+      const { error } = await supabase
+        .from("internal_inventory")
+        .update({
+          product_name: name,
+          quantity: qty,
+          cost_price: cost,
+          image_url: imageUrl,
+        })
+        .eq("id", editTarget.id)
 
-    if (error) {
-      toast.error("Failed to add product: " + error.message)
-      setSaving(false)
-      return
+      if (error) {
+        toast.error("Failed to update product: " + error.message)
+        setSaving(false)
+        return
+      }
+
+      toast.success("Product updated")
+    } else {
+      const { error } = await supabase.from("internal_inventory").insert({
+        product_name: name,
+        quantity: qty,
+        cost_price: cost,
+        image_url: imageUrl,
+      })
+
+      if (error) {
+        toast.error("Failed to add product: " + error.message)
+        setSaving(false)
+        return
+      }
+
+      toast.success("Product added to internal inventory")
     }
 
-    toast.success("Product added to internal inventory")
     resetForm()
-    setAddOpen(false)
+    setFormOpen(false)
     setSaving(false)
     await load()
   }
@@ -279,7 +337,7 @@ export function InternalStockPage() {
             <RefreshCw className="size-3.5" />
             Refresh
           </Button>
-          <Button size="sm" className="gap-1.5" onClick={() => { resetForm(); setAddOpen(true) }}>
+          <Button size="sm" className="gap-1.5" onClick={openAddForm}>
             <Plus className="size-3.5" />
             Add Product
           </Button>
@@ -350,14 +408,23 @@ export function InternalStockPage() {
                   >
                     <ImageOff className="size-10 text-muted-foreground/30" />
                   </div>
-                  {/* Delete button overlay */}
-                  <button
-                    onClick={() => setDeleteTarget(item)}
-                    className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-lg bg-black/50 text-white opacity-0 backdrop-blur-sm transition-all duration-200 hover:bg-red-500 group-hover:opacity-100"
-                    aria-label="Delete product"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
+                  {/* Edit + Delete button overlay */}
+                  <div className="absolute right-2 top-2 flex gap-1.5 opacity-0 transition-all duration-200 group-hover:opacity-100">
+                    <button
+                      onClick={() => openEditForm(item)}
+                      className="flex size-8 items-center justify-center rounded-lg bg-black/50 text-white backdrop-blur-sm transition-colors hover:bg-blue-500"
+                      aria-label="Edit product"
+                    >
+                      <Pencil className="size-4" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(item)}
+                      className="flex size-8 items-center justify-center rounded-lg bg-black/50 text-white backdrop-blur-sm transition-all duration-200 hover:bg-red-500"
+                      aria-label="Delete product"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Content section */}
@@ -389,19 +456,21 @@ export function InternalStockPage() {
         </div>
       )}
 
-      {/* Add Product Dialog */}
-      <Dialog open={addOpen} onOpenChange={(open) => { if (!saving) setAddOpen(open) }}>
+      {/* Add/Edit Product Dialog */}
+      <Dialog open={formOpen} onOpenChange={(open) => { if (!saving) { setFormOpen(open); if (!open) setEditTarget(null) } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Package className="size-5" />
-              Add Product
+              {editTarget ? <Pencil className="size-5" /> : <Package className="size-5" />}
+              {editTarget ? "Edit Product" : "Add Product"}
             </DialogTitle>
             <DialogDescription>
-              Create a new internal inventory item. The image is uploaded and stored automatically.
+              {editTarget
+                ? "Update the product details. Leave the image as-is or pick a new one to replace it."
+                : "Create a new internal inventory item. The image is uploaded and stored automatically."}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleAddItem} className="space-y-4">
+          <form onSubmit={handleSubmitItem} className="space-y-4">
             {/* Image upload */}
             <div className="space-y-1.5">
               <Label>Product Image</Label>
@@ -491,12 +560,12 @@ export function InternalStockPage() {
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setAddOpen(false)} disabled={saving}>
+              <Button type="button" variant="outline" onClick={() => { setFormOpen(false); setEditTarget(null) }} disabled={saving}>
                 Cancel
               </Button>
               <Button type="submit" disabled={saving} className="gap-1.5">
-                {saving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-                {saving ? "Saving…" : "Add Product"}
+                {saving ? <Loader2 className="size-4 animate-spin" /> : editTarget ? <Pencil className="size-4" /> : <Plus className="size-4" />}
+                {saving ? "Saving…" : editTarget ? "Save Changes" : "Add Product"}
               </Button>
             </DialogFooter>
           </form>
