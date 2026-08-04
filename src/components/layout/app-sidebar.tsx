@@ -6,6 +6,7 @@ import {
   ShoppingCart,
   Settings,
   Zap,
+  Calculator,
 } from "lucide-react"
 import {
   Sidebar,
@@ -44,6 +45,11 @@ const navItems = [
     title: "Orders",
     url: "/orders",
     icon: ShoppingCart,
+  },
+  {
+    title: "Accounting",
+    url: "/accounting",
+    icon: Calculator,
   },
   {
     title: "Settings",

@@ -26,6 +26,7 @@ const PAGE_TITLES: Record<string, { title: string; description: string }> = {
   "/products": { title: "Products", description: "Manage your product catalog" },
   "/inventory": { title: "Inventory", description: "Track stock levels and warehouses" },
   "/orders": { title: "Orders", description: "Review and fulfill customer orders" },
+  "/accounting": { title: "Accounting", description: "Track profits and financial records" },
   "/settings": { title: "Settings", description: "Configure your workspace" },
 }
 

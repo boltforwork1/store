@@ -7,6 +7,7 @@ import { InventoryPage } from "@/pages/inventory"
 import { OrdersPage } from "@/pages/orders"
 import { SettingsPage } from "@/pages/settings"
 import { LoginPage } from "@/pages/login"
+import { AccountingPage } from "@/pages/accounting"
 
 export function App() {
   return (
@@ -19,6 +20,7 @@ export function App() {
           <Route path="products" element={<ProductsPage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="orders" element={<OrdersPage />} />
+          <Route path="accounting" element={<AccountingPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>
