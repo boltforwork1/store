@@ -12,6 +12,8 @@ import {
   Coins,
   ChevronLeft,
   ChevronRight,
+  Search,
+  X,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent } from "@/components/ui/card"
@@ -85,6 +87,7 @@ export function AccountingPage() {
   const now = new Date()
   const [filterYear, setFilterYear] = useState(now.getFullYear())
   const [filterMonth, setFilterMonth] = useState(now.getMonth())
+  const [search, setSearch] = useState("")
 
   // Add-record form fields
   const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10))
@@ -123,6 +126,17 @@ export function AccountingPage() {
     })
   }, [records, filterYear, filterMonth])
 
+  // Apply the search query on top of the month filter
+  const filteredRecords = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (q === "") return monthlyRecords
+    return monthlyRecords.filter(
+      (r) =>
+        r.product_name.toLowerCase().includes(q) ||
+        r.sku.toLowerCase().includes(q)
+    )
+  }, [monthlyRecords, search])
+
   const kpis = useMemo(() => {
     let totalProfit = 0
     let totalRevenue = 0
@@ -130,7 +144,7 @@ export function AccountingPage() {
     let positiveCount = 0
     let negativeCount = 0
 
-    for (const r of monthlyRecords) {
+    for (const r of filteredRecords) {
       const np = netProfit(r)
       totalProfit += np
       totalRevenue += revenue(r)
@@ -144,11 +158,11 @@ export function AccountingPage() {
       totalRevenue,
       totalCost: totalCostVal,
       profitMargin: totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0,
-      recordCount: monthlyRecords.length,
+      recordCount: filteredRecords.length,
       positiveCount,
       negativeCount,
     }
-  }, [monthlyRecords])
+  }, [filteredRecords])
 
   function goToPrevMonth() {
     if (filterMonth === 0) {
@@ -443,15 +457,38 @@ export function AccountingPage() {
         </div>
       )}
 
+      {/* Search bar */}
+      {kpis.recordCount > 0 && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search by product name or SKU…"
+            className="pl-9 bg-background"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Spreadsheet-style Table */}
-      {monthlyRecords.length === 0 ? (
+      {filteredRecords.length === 0 ? (
         <Card className="flex flex-col items-center justify-center py-16 text-center">
           <CardContent className="space-y-2">
             <Wallet className="mx-auto size-10 text-muted-foreground/40" />
-            <p className="text-sm font-medium">No records for {monthLabel}</p>
+            <p className="text-sm font-medium">{search ? "No matching records" : `No records for ${monthLabel}`}</p>
             <p className="text-xs text-muted-foreground max-w-sm">
-              Click "Add Record" to manually enter a sale with cost and selling prices.
-              Net profit is calculated automatically.
+              {search
+                ? "Try a different search term."
+                : 'Click "Add Record" to manually enter a sale with cost and selling prices. Net profit is calculated automatically.'}
             </p>
           </CardContent>
         </Card>
@@ -473,7 +510,7 @@ export function AccountingPage() {
                 </tr>
               </thead>
               <tbody>
-                {monthlyRecords.map((r, idx) => {
+                {filteredRecords.map((r, idx) => {
                   const np = netProfit(r)
                   const isPositive = np >= 0
                   // Alternating soft blue / white rows
@@ -545,7 +582,7 @@ export function AccountingPage() {
                     Totals ({kpis.recordCount} records)
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums text-emerald-800 dark:text-emerald-200">
-                    {monthlyRecords.reduce((s, r) => s + r.quantity, 0)}
+                    {filteredRecords.reduce((s, r) => s + r.quantity, 0)}
                   </td>
                   <td className="px-4 py-3" />
                   <td className="px-4 py-3" />

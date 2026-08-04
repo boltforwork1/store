@@ -9,6 +9,7 @@ import {
   Upload,
   ImageOff,
   X,
+  Search,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent } from "@/components/ui/card"
@@ -40,6 +41,7 @@ import { cn } from "@/lib/utils"
 type InventoryItem = {
   id: string
   product_name: string
+  model_number: string
   quantity: number
   cost_price: number
   image_url: string | null
@@ -88,6 +90,7 @@ function stockBadge(qty: number): StockLevel {
 export function InternalStockPage() {
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<InventoryItem[]>([])
+  const [search, setSearch] = useState("")
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<InventoryItem | null>(null)
   const [saving, setSaving] = useState(false)
@@ -96,6 +99,7 @@ export function InternalStockPage() {
 
   // Form fields
   const [formName, setFormName] = useState("")
+  const [formModel, setFormModel] = useState("")
   const [formQty, setFormQty] = useState("0")
   const [formCost, setFormCost] = useState("")
   const [formFile, setFormFile] = useState<File | null>(null)
@@ -106,7 +110,7 @@ export function InternalStockPage() {
     setLoading(true)
     const { data, error } = await supabase
       .from("internal_inventory")
-      .select("id, product_name, quantity, cost_price, image_url, created_at")
+      .select("id, product_name, model_number, quantity, cost_price, image_url, created_at")
       .order("created_at", { ascending: false })
 
     if (error) {
@@ -124,6 +128,7 @@ export function InternalStockPage() {
 
   function resetForm() {
     setFormName("")
+    setFormModel("")
     setFormQty("0")
     setFormCost("")
     setFormFile(null)
@@ -134,6 +139,7 @@ export function InternalStockPage() {
 
   function populateForm(item: InventoryItem) {
     setFormName(item.product_name)
+    setFormModel(item.model_number)
     setFormQty(String(item.quantity))
     setFormCost(String(item.cost_price))
     setFormFile(null)
@@ -174,10 +180,12 @@ export function InternalStockPage() {
     e.preventDefault()
 
     const name = formName.trim()
+    const model = formModel.trim()
     const qty = parseInt(formQty, 10)
     const cost = parseFloat(formCost)
 
     if (!name) { toast.error("Product name is required"); return }
+    if (!model) { toast.error("Model number is required"); return }
     if (!Number.isFinite(qty) || qty < 0) { toast.error("Quantity must be 0 or more"); return }
     if (!Number.isFinite(cost) || cost < 0) { toast.error("Cost price must be a valid number"); return }
 
@@ -233,6 +241,7 @@ export function InternalStockPage() {
         .from("internal_inventory")
         .update({
           product_name: name,
+          model_number: model,
           quantity: qty,
           cost_price: cost,
           image_url: imageUrl,
@@ -249,6 +258,7 @@ export function InternalStockPage() {
     } else {
       const { error } = await supabase.from("internal_inventory").insert({
         product_name: name,
+        model_number: model,
         quantity: qty,
         cost_price: cost,
         image_url: imageUrl,
@@ -304,6 +314,15 @@ export function InternalStockPage() {
     await load()
   }
 
+  const filteredItems = items.filter((item) => {
+    const q = search.trim().toLowerCase()
+    if (q === "") return true
+    return (
+      item.product_name.toLowerCase().includes(q) ||
+      item.model_number.toLowerCase().includes(q)
+    )
+  })
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -344,6 +363,28 @@ export function InternalStockPage() {
         </div>
       </div>
 
+      {/* Search bar */}
+      {items.length > 0 && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search by product name or model number…"
+            className="pl-9 bg-background"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Summary cards */}
       {items.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-3">
@@ -377,9 +418,19 @@ export function InternalStockPage() {
             </p>
           </CardContent>
         </Card>
+      ) : filteredItems.length === 0 ? (
+        <Card className="flex flex-col items-center justify-center py-16 text-center">
+          <CardContent className="space-y-2">
+            <Package className="mx-auto size-10 text-muted-foreground/40" />
+            <p className="text-sm font-medium">No matching products</p>
+            <p className="text-xs text-muted-foreground max-w-sm">
+              Try a different search term.
+            </p>
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {items.map((item) => {
+          {filteredItems.map((item) => {
             const badge = stockBadge(item.quantity)
             return (
               <div
@@ -433,6 +484,11 @@ export function InternalStockPage() {
                     <h3 className="line-clamp-1 font-bold leading-tight tracking-tight">
                       {item.product_name}
                     </h3>
+                    {item.model_number && (
+                      <p className="text-xs font-mono text-muted-foreground">
+                        Model: {item.model_number}
+                      </p>
+                    )}
                     <p className="text-lg font-extrabold tabular-nums text-foreground">
                       {fmtPrice(Number(item.cost_price))}
                     </p>
@@ -528,6 +584,16 @@ export function InternalStockPage() {
                 placeholder="e.g. Cotton T-Shirt"
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="inv-model">Model Number <span className="text-destructive">*</span></Label>
+              <Input
+                id="inv-model"
+                placeholder="e.g. TS-CTN-001"
+                value={formModel}
+                onChange={(e) => setFormModel(e.target.value)}
                 required
               />
             </div>
