@@ -722,6 +722,3 @@ export function AccountingPage() {
     </div>
   )
 }
-
-
-export { AccountingPage }

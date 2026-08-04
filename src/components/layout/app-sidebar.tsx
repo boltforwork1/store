@@ -7,6 +7,7 @@ import {
   Settings,
   Zap,
   Calculator,
+  Boxes,
 } from "lucide-react"
 import {
   Sidebar,
@@ -40,6 +41,11 @@ const navItems = [
     title: "Inventory",
     url: "/inventory",
     icon: Warehouse,
+  },
+  {
+    title: "Internal Stock",
+    url: "/internal-stock",
+    icon: Boxes,
   },
   {
     title: "Orders",

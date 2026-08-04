@@ -8,6 +8,7 @@ import { OrdersPage } from "@/pages/orders"
 import { SettingsPage } from "@/pages/settings"
 import { LoginPage } from "@/pages/login"
 import { AccountingPage } from "@/pages/accounting"
+import { InternalStockPage } from "@/pages/internal-stock"
 
 export function App() {
   return (
@@ -21,6 +22,7 @@ export function App() {
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="orders" element={<OrdersPage />} />
           <Route path="accounting" element={<AccountingPage />} />
+          <Route path="internal-stock" element={<InternalStockPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>
