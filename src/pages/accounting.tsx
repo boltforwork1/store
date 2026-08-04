@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
+import { ProductNameAutocomplete } from "@/components/product-name-autocomplete"
 
 type FinanceRecord = {
   id: string
@@ -88,6 +89,7 @@ export function AccountingPage() {
   const [filterYear, setFilterYear] = useState(now.getFullYear())
   const [filterMonth, setFilterMonth] = useState(now.getMonth())
   const [search, setSearch] = useState("")
+  const [inventoryNames, setInventoryNames] = useState<string[]>([])
 
   // Add-record form fields
   const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10))
@@ -117,6 +119,20 @@ export function AccountingPage() {
   useEffect(() => {
     load()
   }, [load])
+
+  // Fetch product names from internal_inventory for autocomplete suggestions
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from("internal_inventory")
+        .select("product_name")
+        .order("product_name", { ascending: true })
+      if (!error && data) {
+        const names = data.map((r: { product_name: string }) => r.product_name).filter(Boolean)
+        setInventoryNames(Array.from(new Set(names)))
+      }
+    })()
+  }, [])
 
   // Filter records to the selected month/year
   const monthlyRecords = useMemo(() => {
@@ -639,16 +655,11 @@ export function AccountingPage() {
                 />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="fin-name">Product Name <span className="text-destructive">*</span></Label>
-              <Input
-                id="fin-name"
-                placeholder="e.g. Wireless Headphones"
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                required
-              />
-            </div>
+            <ProductNameAutocomplete
+              value={formName}
+              onChange={setFormName}
+              suggestions={inventoryNames}
+            />
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label htmlFor="fin-qty">Quantity <span className="text-destructive">*</span></Label>
