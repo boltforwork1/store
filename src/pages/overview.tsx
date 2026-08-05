@@ -151,7 +151,7 @@ export function OverviewPage() {
         change: null,
         trend: null,
         icon: DollarSign,
-        description: t("from confirmed & shipped orders", "من الطلبات المؤكدة والمرسلة"),
+        description: t("from confirmed & shipped orders", "من الطلبات المؤكدة والمشحونة"),
       },
       {
         title: t("Total Orders", "إجمالي الطلبات"),

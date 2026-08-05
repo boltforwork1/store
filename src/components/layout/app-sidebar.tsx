@@ -80,7 +80,7 @@ export function AppSidebar() {
   const userName = user?.user_metadata?.full_name ?? userEmail.split("@")[0] ?? "User"
 
   return (
-    <Sidebar collapsible="icon" variant="sidebar">
+    <Sidebar collapsible="icon" variant="sidebar" side={lang === "ar" ? "right" : "left"}>
       <SidebarHeader className="border-b border-sidebar-border pb-3">
         <div className="flex items-center gap-2.5 px-1 py-1">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary shadow-sm">
