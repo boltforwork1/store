@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
+import { useLanguage } from "@/components/language-provider"
 
 type InventoryItem = {
   id: string
@@ -58,36 +59,37 @@ type StockLevel = {
   dot: string
 }
 
-function stockBadge(qty: number): StockLevel {
+function stockBadge(qty: number, t: (en: string, ar: string) => string): StockLevel {
   if (qty <= 0) {
     return {
-      label: "Out of stock",
+      label: t("Out of stock", "نفد من المخزون"),
       className: "bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900",
       dot: "bg-red-500",
     }
   }
   if (qty <= 5) {
     return {
-      label: "Low stock",
+      label: t("Low stock", "مخزون منخفض"),
       className: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-900",
       dot: "bg-amber-500",
     }
   }
   if (qty <= 20) {
     return {
-      label: "Medium stock",
+      label: t("Medium stock", "مخزون متوسط"),
       className: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900",
       dot: "bg-blue-500",
     }
   }
   return {
-    label: "In stock",
+    label: t("In stock", "متوفر"),
     className: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-900",
     dot: "bg-emerald-500",
   }
 }
 
 export function InternalStockPage() {
+  const { t, lang } = useLanguage()
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<InventoryItem[]>([])
   const [search, setSearch] = useState("")
@@ -346,19 +348,19 @@ export function InternalStockPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Internal Stock</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{t("Internal Stock", "المخزون الداخلي")}</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Manually track your own inventory — independent from Noon
+            {t("Manually track your own inventory — independent from Noon", "تتبع مخزونك الخاص يدوياً - مستقل عن نون")}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
             <RefreshCw className="size-3.5" />
-            Refresh
+            {t("Refresh", "تحديث")}
           </Button>
           <Button size="sm" className="gap-1.5" onClick={openAddForm}>
             <Plus className="size-3.5" />
-            Add Product
+            {t("Add Product", "إضافة منتج")}
           </Button>
         </div>
       </div>
@@ -366,18 +368,18 @@ export function InternalStockPage() {
       {/* Search bar */}
       {items.length > 0 && (
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className={cn("absolute top-1/2 size-4 -translate-y-1/2 text-muted-foreground", lang === "ar" ? "right-3" : "left-3")} />
           <Input
-            placeholder="Search by product name or model number…"
-            className="pl-9 bg-background"
+            placeholder={t("Search by product name or model number…", "البحث باسم المنتج أو رقم الموديل…")}
+            className={cn("bg-background text-start", lang === "ar" ? "pr-9" : "pl-9")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           {search && (
             <button
               onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
+              className={cn("absolute top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground", lang === "ar" ? "left-3" : "right-3")}
+              aria-label={t("Clear search", "مسح البحث")}
             >
               <X className="size-4" />
             </button>
@@ -389,17 +391,17 @@ export function InternalStockPage() {
       {items.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-xl border bg-gradient-to-br from-blue-50 to-indigo-50 p-4 dark:from-blue-950/40 dark:to-indigo-950/40">
-            <p className="text-sm text-muted-foreground">Total Products</p>
+            <p className="text-sm text-muted-foreground">{t("Total Products", "إجمالي المنتجات")}</p>
             <p className="mt-1 text-2xl font-bold text-blue-700 dark:text-blue-300">{items.length}</p>
           </div>
           <div className="rounded-xl border bg-gradient-to-br from-emerald-50 to-teal-50 p-4 dark:from-emerald-950/40 dark:to-teal-950/40">
-            <p className="text-sm text-muted-foreground">Total Units</p>
+            <p className="text-sm text-muted-foreground">{t("Total Units", "إجمالي الوحدات")}</p>
             <p className="mt-1 text-2xl font-bold text-emerald-700 dark:text-emerald-300">
               {items.reduce((s, i) => s + i.quantity, 0)}
             </p>
           </div>
           <div className="rounded-xl border bg-gradient-to-br from-amber-50 to-orange-50 p-4 dark:from-amber-950/40 dark:to-orange-950/40">
-            <p className="text-sm text-muted-foreground">Inventory Value</p>
+            <p className="text-sm text-muted-foreground">{t("Inventory Value", "قيمة المخزون")}</p>
             <p className="mt-1 text-2xl font-bold text-amber-700 dark:text-amber-300">
               {fmtPrice(items.reduce((s, i) => s + i.quantity * Number(i.cost_price), 0))}
             </p>
@@ -412,9 +414,9 @@ export function InternalStockPage() {
         <Card className="flex flex-col items-center justify-center py-16 text-center">
           <CardContent className="space-y-2">
             <Package className="mx-auto size-10 text-muted-foreground/40" />
-            <p className="text-sm font-medium">No products yet</p>
+            <p className="text-sm font-medium">{t("No products yet", "لا توجد منتجات بعد")}</p>
             <p className="text-xs text-muted-foreground max-w-sm">
-              Click "Add Product" to create your first internal inventory item with an image.
+              {t('Click "Add Product" to create your first internal inventory item with an image.', 'انقر على "إضافة منتج" لإنشاء أول عنصر في مخزونك الداخلي مع صورة.')}
             </p>
           </CardContent>
         </Card>
@@ -422,16 +424,16 @@ export function InternalStockPage() {
         <Card className="flex flex-col items-center justify-center py-16 text-center">
           <CardContent className="space-y-2">
             <Package className="mx-auto size-10 text-muted-foreground/40" />
-            <p className="text-sm font-medium">No matching products</p>
+            <p className="text-sm font-medium">{t("No matching products", "لا توجد منتجات مطابقة")}</p>
             <p className="text-xs text-muted-foreground max-w-sm">
-              Try a different search term.
+              {t("Try a different search term.", "جرب كلمة بحث مختلفة.")}
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredItems.map((item) => {
-            const badge = stockBadge(item.quantity)
+            const badge = stockBadge(item.quantity, t)
             return (
               <div
                 key={item.id}
@@ -485,8 +487,8 @@ export function InternalStockPage() {
                       {item.product_name}
                     </h3>
                     {item.model_number && (
-                      <p className="text-xs font-mono text-muted-foreground">
-                        Model: {item.model_number}
+                      <p className="text-xs font-mono text-muted-foreground text-start">
+                        {t("Model:", "الموديل:")} {item.model_number}
                       </p>
                     )}
                     <p className="text-lg font-extrabold tabular-nums text-foreground">
@@ -495,8 +497,8 @@ export function InternalStockPage() {
                   </div>
 
                   {/* Quantity badge */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Qty: <span className="font-bold tabular-nums text-foreground">{item.quantity}</span></span>
+                  <div className="flex flex-row items-center justify-between">
+                    <span className="text-xs text-muted-foreground">{t("Qty:", "الكمية:")} <span className="font-bold tabular-nums text-foreground">{item.quantity}</span></span>
                     <span className={cn(
                       "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold",
                       badge.className
@@ -518,18 +520,18 @@ export function InternalStockPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {editTarget ? <Pencil className="size-5" /> : <Package className="size-5" />}
-              {editTarget ? "Edit Product" : "Add Product"}
+              {editTarget ? t("Edit Product", "تعديل المنتج") : t("Add Product", "إضافة منتج")}
             </DialogTitle>
             <DialogDescription>
               {editTarget
-                ? "Update the product details. Leave the image as-is or pick a new one to replace it."
-                : "Create a new internal inventory item. The image is uploaded and stored automatically."}
+                ? t("Update the product details. Leave the image as-is or pick a new one to replace it.", "قم بتحديث تفاصيل المنتج. اترك الصورة كما هي أو اختر واحدة جديدة لاستبدالها.")
+                : t("Create a new internal inventory item. The image is uploaded and stored automatically.", "أنشئ عنصراً جديداً في المخزون الداخلي. يتم رفع الصورة وتخزينها تلقائياً.")}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmitItem} className="space-y-4">
             {/* Image upload */}
             <div className="space-y-1.5">
-              <Label>Product Image</Label>
+              <Label>{t("Product Image", "صورة المنتج")}</Label>
               <div className="flex flex-col items-center">
                 <div className="relative flex h-40 w-full items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-border bg-muted/30 transition-colors hover:border-primary/50">
                   {formPreview ? (
@@ -551,8 +553,8 @@ export function InternalStockPage() {
                       className="flex flex-col items-center gap-2 py-6 text-muted-foreground transition-colors hover:text-foreground"
                     >
                       <Upload className="size-8" />
-                      <span className="text-sm font-medium">Click to upload an image</span>
-                      <span className="text-xs">PNG, JPG up to ~5MB</span>
+                      <span className="text-sm font-medium">{t("Click to upload an image", "انقر لرفع صورة")}</span>
+                      <span className="text-xs">{t("PNG, JPG up to ~5MB", "PNG, JPG حتى ~5 ميجابايت")}</span>
                     </button>
                   )}
                 </div>
@@ -571,27 +573,27 @@ export function InternalStockPage() {
                     className="mt-2 h-7 text-xs"
                     onClick={() => fileInputRef.current?.click()}
                   >
-                    Change image
+                    {t("Change image", "تغيير الصورة")}
                   </Button>
                 )}
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="inv-name">Product Name <span className="text-destructive">*</span></Label>
+              <Label htmlFor="inv-name">{t("Product Name", "اسم المنتج")} <span className="text-destructive">*</span></Label>
               <Input
                 id="inv-name"
-                placeholder="e.g. Cotton T-Shirt"
+                placeholder={t("e.g. Cotton T-Shirt", "مثال قميص قطني")}
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
                 required
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="inv-model">Model Number <span className="text-destructive">*</span></Label>
+              <Label htmlFor="inv-model">{t("Model Number", "رقم الموديل")} <span className="text-destructive">*</span></Label>
               <Input
                 id="inv-model"
-                placeholder="e.g. TS-CTN-001"
+                placeholder={t("e.g. TS-CTN-001", "مثال TS-CTN-001")}
                 value={formModel}
                 onChange={(e) => setFormModel(e.target.value)}
                 required
@@ -599,7 +601,7 @@ export function InternalStockPage() {
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="inv-qty">Quantity <span className="text-destructive">*</span></Label>
+                <Label htmlFor="inv-qty">{t("Quantity", "الكمية")} <span className="text-destructive">*</span></Label>
                 <Input
                   id="inv-qty"
                   type="number"
@@ -611,7 +613,7 @@ export function InternalStockPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="inv-cost">Cost Price <span className="text-destructive">*</span></Label>
+                <Label htmlFor="inv-cost">{t("Cost Price", "سعر التكلفة")} <span className="text-destructive">*</span></Label>
                 <Input
                   id="inv-cost"
                   type="number"
@@ -627,11 +629,11 @@ export function InternalStockPage() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => { setFormOpen(false); setEditTarget(null) }} disabled={saving}>
-                Cancel
+                {t("Cancel", "إلغاء")}
               </Button>
               <Button type="submit" disabled={saving} className="gap-1.5">
                 {saving ? <Loader2 className="size-4 animate-spin" /> : editTarget ? <Pencil className="size-4" /> : <Plus className="size-4" />}
-                {saving ? "Saving…" : editTarget ? "Save Changes" : "Add Product"}
+                {saving ? t("Saving…", "جارٍ الحفظ…") : editTarget ? t("Save Changes", "حفظ التغييرات") : t("Add Product", "إضافة منتج")}
               </Button>
             </DialogFooter>
           </form>
@@ -645,22 +647,22 @@ export function InternalStockPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete product?</AlertDialogTitle>
+            <AlertDialogTitle>{t("Delete product?", "حذف المنتج؟")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove
+              {t("This will permanently remove", "سيؤدي هذا إلى إزالة")}
               <span className="font-medium text-foreground"> {deleteTarget?.product_name}</span>
-              and its image. This action cannot be undone.
+              {t("and its image. This action cannot be undone.", "وصورته. لا يمكن التراجع عن هذا الإجراء.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("Cancel", "إلغاء")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => { e.preventDefault(); handleDeleteItem() }}
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleting ? <Loader2 className="size-4 animate-spin" /> : null}
-              {deleting ? "Deleting…" : "Delete"}
+              {deleting ? t("Deleting…", "جارٍ الحذف…") : t("Delete", "حذف")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
