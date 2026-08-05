@@ -851,10 +851,12 @@ export function OrdersPage() {
       <Card>
         <CardHeader className="pb-4">
           <div>
-            <CardTitle className="text-base">Sync Orders from Noon</CardTitle>
+            <CardTitle className="text-base">{t("Sync Orders from Noon", "مزامنة الطلبات من نون")}</CardTitle>
             <CardDescription className="mt-1">
-              Pull all FBPI orders for a warehouse from the Noon API. Orders and
-              their line items are saved to your dashboard automatically.
+              {t(
+                "Pull all FBPI orders for a warehouse from the Noon API. Orders and their line items are saved to your dashboard automatically.",
+                "اسحب جميع طلبات FBPI لمستودع من واجهة برمجة تطبيقات نون. يتم حفظ الطلبات وعناصرها في لوحة التحكم الخاصة بك تلقائياً."
+              )}
             </CardDescription>
           </div>
         </CardHeader>
