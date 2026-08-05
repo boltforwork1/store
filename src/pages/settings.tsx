@@ -1,12 +1,10 @@
 import { useState, useEffect } from "react"
-import { Building2, Save, Lock, Loader as Loader2, Check, Eye, EyeOff, Users, UserPlus, KeyRound, RefreshCw, Trash2 } from "lucide-react"
+import { Lock, Loader as Loader2, Check, Eye, EyeOff, Users, UserPlus, KeyRound, RefreshCw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
-import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   Table,
@@ -38,6 +36,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { supabase } from "@/lib/supabase"
 import { createStaffUser, updateStaffPassword, deleteStaffUser, type StaffUser } from "@/lib/admin"
 import { useAuth } from "@/hooks/use-auth"
+import { useLanguage } from "@/components/language-provider"
 import { cn } from "@/lib/utils"
 
 function passwordStrength(pw: string): { score: number; label: string; color: string } {
@@ -58,6 +57,7 @@ function passwordStrength(pw: string): { score: number; label: string; color: st
 
 export function SettingsPage() {
   const { isAdmin } = useAuth()
+  const { t, lang } = useLanguage()
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showNew, setShowNew] = useState(false)
@@ -223,9 +223,9 @@ export function SettingsPage() {
     <div className="space-y-6 max-w-4xl">
       {/* Header */}
       <div>
-        <h2 className="text-xl font-semibold tracking-tight">Settings</h2>
+        <h2 className="text-xl font-semibold tracking-tight">{t("Settings", "الإعدادات")}</h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Manage your account and company profile.
+          {t("Manage your account and team", "إدارة حسابك وفريق العمل")}
         </p>
       </div>
 
@@ -238,32 +238,32 @@ export function SettingsPage() {
               <Lock className="size-4 text-muted-foreground" />
             </div>
             <div>
-              <CardTitle className="text-base">Change Password</CardTitle>
-              <CardDescription>Update your account password</CardDescription>
+              <CardTitle className="text-base">{t("Change Password", "تغيير كلمة المرور")}</CardTitle>
+              <CardDescription>{t("Update your account password", "تحديث كلمة مرور حسابك")}</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleChangePassword} className="space-y-5 max-w-md">
             <div className="space-y-2">
-              <Label htmlFor="new-password">New Password</Label>
+              <Label htmlFor="new-password">{t("New Password", "كلمة المرور الجديدة")}</Label>
               <div className="relative">
                 <Input
                   id="new-password"
                   type={showNew ? "text" : "password"}
-                  placeholder="Enter new password"
+                  placeholder={t("Enter new password", "أدخل كلمة المرور الجديدة")}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
                   minLength={8}
-                  className="pr-10"
+                  className="pe-10 text-start"
                   autoComplete="new-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowNew((s) => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label={showNew ? "Hide password" : "Show password"}
+                  className={cn("absolute top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors", lang === "ar" ? "left-3" : "right-3")}
+                  aria-label={showNew ? t("Hide password", "إخفاء كلمة المرور") : t("Show password", "إظهار كلمة المرور")}
                   tabIndex={-1}
                 >
                   {showNew ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -284,31 +284,31 @@ export function SettingsPage() {
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Password strength: <span className="font-medium text-foreground">{strength.label}</span>
+                    {t("Password strength:", "قوة كلمة المرور:")} <span className="font-medium text-foreground">{strength.label}</span>
                   </p>
                 </div>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirm-password">Confirm New Password</Label>
+              <Label htmlFor="confirm-password">{t("Confirm New Password", "تأكيد كلمة المرور الجديدة")}</Label>
               <div className="relative">
                 <Input
                   id="confirm-password"
                   type={showConfirm ? "text" : "password"}
-                  placeholder="Re-enter new password"
+                  placeholder={t("Re-enter new password", "أعد إدخال كلمة المرور الجديدة")}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   minLength={8}
-                  className="pr-10"
+                  className="pe-10 text-start"
                   autoComplete="new-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirm((s) => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label={showConfirm ? "Hide password" : "Show password"}
+                  className={cn("absolute top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors", lang === "ar" ? "left-3" : "right-3")}
+                  aria-label={showConfirm ? t("Hide password", "إخفاء كلمة المرور") : t("Show password", "إظهار كلمة المرور")}
                   tabIndex={-1}
                 >
                   {showConfirm ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -325,12 +325,12 @@ export function SettingsPage() {
                   {passwordsMatch ? (
                     <>
                       <Check className="size-3.5" />
-                      Passwords match
+                      {t("Passwords match", "كلمات المرور متطابقة")}
                     </>
                   ) : (
                     <>
                       <span className="size-3.5 rounded-full border-2 border-current" />
-                      Passwords do not match
+                      {t("Passwords do not match", "كلمات المرور غير متطابقة")}
                     </>
                   )}
                 </p>
@@ -344,66 +344,13 @@ export function SettingsPage() {
                 ) : (
                   <Lock className="size-3.5" />
                 )}
-                {saving ? "Updating…" : "Update Password"}
+                {saving ? t("Updating…", "جارٍ التحديث…") : t("Update Password", "تحديث كلمة المرور")}
               </Button>
             </div>
           </form>
         </CardContent>
       </Card>
       )}
-
-      {/* Company Profile */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
-              <Building2 className="size-4 text-muted-foreground" />
-            </div>
-            <div>
-              <CardTitle className="text-base">Company Profile</CardTitle>
-              <CardDescription>Update your company's public information</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="flex items-center gap-4">
-            <Avatar className="size-16">
-              <AvatarFallback className="text-lg font-bold bg-muted text-muted-foreground rounded-xl">
-                —
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex flex-col gap-1.5">
-              <Button variant="outline" size="sm">Change logo</Button>
-              <p className="text-xs text-muted-foreground">PNG, JPG or SVG · max 2MB</p>
-            </div>
-          </div>
-          <Separator />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="company-name">Company name</Label>
-              <Input id="company-name" placeholder="Your company name" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="website">Website</Label>
-              <Input id="website" placeholder="https://" type="url" />
-            </div>
-            <div className="col-span-full space-y-1.5">
-              <Label htmlFor="bio">Description</Label>
-              <Textarea
-                id="bio"
-                rows={3}
-                placeholder="Briefly describe your business — this will be used to map your Noon Partner profile."
-              />
-            </div>
-          </div>
-          <div className="flex justify-end">
-            <Button size="sm" className="gap-1.5">
-              <Save className="size-3.5" />
-              Save changes
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* User Management Section — Admin only */}
       {isAdmin && (
@@ -415,10 +362,9 @@ export function SettingsPage() {
                 <Users className="size-4 text-muted-foreground" />
               </div>
               <div>
-                <CardTitle>User Management</CardTitle>
+                <CardTitle>{t("User Management", "إدارة المستخدمين")}</CardTitle>
                 <CardDescription className="mt-1">
-                  Create staff accounts and reset their passwords. Creating a
-                  user here does not sign you out.
+                  {t("Create staff accounts and reset their passwords. Creating a user here does not sign you out.", "إنشاء حسابات للموظفين وإعادة تعيين كلمات المرور الخاصة بهم. إنشاء مستخدم هنا لا يؤدي إلى تسجيل خروجك.")}
                 </CardDescription>
               </div>
             </div>
@@ -430,7 +376,7 @@ export function SettingsPage() {
               disabled={loadingUsers}
             >
               <RefreshCw className={cn("size-3.5", loadingUsers && "animate-spin")} />
-              Refresh
+              {t("Refresh", "تحديث")}
             </Button>
           </div>
         </CardHeader>
@@ -442,7 +388,7 @@ export function SettingsPage() {
           >
             <div className="space-y-1.5">
               <Label htmlFor="new-staff-email" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Email
+                {t("Email", "البريد الإلكتروني")}
               </Label>
               <Input
                 id="new-staff-email"
@@ -452,28 +398,28 @@ export function SettingsPage() {
                 onChange={(e) => setNewStaffEmail(e.target.value)}
                 disabled={creatingUser}
                 required
-                className="bg-background"
+                className="bg-background text-start"
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="new-staff-password" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Password
+                {t("Password", "كلمة المرور")}
               </Label>
               <div className="relative">
                 <Input
                   id="new-staff-password"
                   type={showStaffPassword ? "text" : "password"}
-                  placeholder="At least 8 characters"
+                  placeholder={t("At least 8 characters", "8 أحرف على الأقل")}
                   value={newStaffPassword}
                   onChange={(e) => setNewStaffPassword(e.target.value)}
                   disabled={creatingUser}
                   required
-                  className="bg-background pr-9"
+                  className="bg-background pe-9 text-start"
                 />
                 <button
                   type="button"
                   onClick={() => setShowStaffPassword((s) => !s)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className={cn("absolute top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground", lang === "ar" ? "left-2.5" : "right-2.5")}
                   tabIndex={-1}
                 >
                   {showStaffPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -486,7 +432,7 @@ export function SettingsPage() {
               ) : (
                 <UserPlus className="size-3.5" />
               )}
-              {creatingUser ? "Creating…" : "Create User"}
+              {creatingUser ? t("Creating…", "جارٍ الإنشاء…") : t("Create User", "إنشاء مستخدم")}
             </Button>
           </form>
 
@@ -500,9 +446,9 @@ export function SettingsPage() {
           ) : staffUsers.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-10 text-center">
               <Users className="mx-auto size-8 text-muted-foreground/40" />
-              <p className="mt-2 text-sm font-medium">No staff users yet</p>
+              <p className="mt-2 text-sm font-medium">{t("No staff users yet", "لا يوجد مستخدمون بعد")}</p>
               <p className="text-xs text-muted-foreground max-w-sm">
-                Create a new user above to add a staff member to your workspace.
+                {t("Create a new user above to add a staff member to your workspace.", "أنشئ مستخدماً جديداً أعلاه لإضافة موظف إلى مساحة عملك.")}
               </p>
             </div>
           ) : (
@@ -510,15 +456,15 @@ export function SettingsPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="pl-4">Email</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead className="pr-4 text-right">Actions</TableHead>
+                    <TableHead className="ps-4 text-start">{t("Email", "البريد الإلكتروني")}</TableHead>
+                    <TableHead className="text-start">{t("Created", "تاريخ الإنشاء")}</TableHead>
+                    <TableHead className="pe-4 text-end">{t("Actions", "الإجراءات")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {staffUsers.map((user) => (
                     <TableRow key={user.id}>
-                      <TableCell className="pl-4 font-medium">
+                      <TableCell className="ps-4 font-medium text-start">
                         <div className="flex items-center gap-2.5">
                           <Avatar className="size-7">
                             <AvatarFallback className="text-xs">
@@ -528,14 +474,14 @@ export function SettingsPage() {
                           <span>{user.email}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="text-sm text-muted-foreground text-start">
                         {new Date(user.created_at).toLocaleDateString(undefined, {
                           year: "numeric",
                           month: "short",
                           day: "numeric",
                         })}
                       </TableCell>
-                      <TableCell className="pr-4 text-right">
+                      <TableCell className="pe-4 text-end">
                         <div className="flex justify-end gap-2">
                           <Button
                             variant="outline"
@@ -548,7 +494,7 @@ export function SettingsPage() {
                             }}
                           >
                             <KeyRound className="size-3.5" />
-                            Edit Password
+                            {t("Edit Password", "تعديل كلمة المرور")}
                           </Button>
                           <Button
                             variant="outline"
@@ -557,7 +503,7 @@ export function SettingsPage() {
                             onClick={() => setDeleteTarget(user)}
                           >
                             <Trash2 className="size-3.5" />
-                            Delete
+                            {t("Delete", "حذف")}
                           </Button>
                         </div>
                       </TableCell>
@@ -586,39 +532,39 @@ export function SettingsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <KeyRound className="size-5" />
-              Edit Password
+              {t("Edit Password", "تعديل كلمة المرور")}
             </DialogTitle>
             <DialogDescription>
-              Set a new password for{" "}
+              {t("Set a new password for", "قم بتعيين كلمة مرور جديدة لـ")}{" "}
               <span className="font-medium text-foreground">{editTarget?.email}</span>.
-              They can sign in with the new password immediately.
+              {t("They can sign in with the new password immediately.", "يمكنهم تسجيل الدخول بكلمة المرور الجديدة فوراً.")}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-1.5 py-2">
-            <Label htmlFor="edit-password">New Password</Label>
+            <Label htmlFor="edit-password">{t("New Password", "كلمة المرور الجديدة")}</Label>
             <div className="relative">
               <Input
                 id="edit-password"
                 type={showEditPassword ? "text" : "password"}
-                placeholder="At least 8 characters"
+                placeholder={t("At least 8 characters", "8 أحرف على الأقل")}
                 value={editPassword}
                 onChange={(e) => setEditPassword(e.target.value)}
                 disabled={savingPassword}
                 autoFocus
-                className="pr-9"
+                className="pe-9 text-start"
               />
               <button
                 type="button"
                 onClick={() => setShowEditPassword((s) => !s)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                className={cn("absolute top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground", lang === "ar" ? "left-2.5" : "right-2.5")}
                 tabIndex={-1}
               >
                 {showEditPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Must be at least 8 characters.
+              {t("Must be at least 8 characters.", "يجب أن تكون 8 أحرف على الأقل.")}
             </p>
           </div>
 
@@ -632,7 +578,7 @@ export function SettingsPage() {
               }}
               disabled={savingPassword}
             >
-              Cancel
+              {t("Cancel", "إلغاء")}
             </Button>
             <Button
               onClick={handleUpdatePassword}
@@ -644,7 +590,7 @@ export function SettingsPage() {
               ) : (
                 <Check className="size-4" />
               )}
-              {savingPassword ? "Saving…" : "Update Password"}
+              {savingPassword ? t("Saving…", "جارٍ الحفظ…") : t("Update Password", "تحديث كلمة المرور")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -661,16 +607,16 @@ export function SettingsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <Trash2 className="size-5 text-destructive" />
-              Delete User
+              {t("Delete User", "حذف المستخدم")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the account for{" "}
+              {t("This will permanently delete the account for", "سيؤدي هذا إلى حذف حساب")}{" "}
               <span className="font-medium text-foreground">{deleteTarget?.email}</span>.
-              They will no longer be able to sign in. This action cannot be undone.
+              {t("They will no longer be able to sign in. This action cannot be undone.", "لن يتمكنوا من تسجيل الدخول بعد الآن. لا يمكن التراجع عن هذا الإجراء.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingUser}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deletingUser}>{t("Cancel", "إلغاء")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault()
@@ -684,7 +630,7 @@ export function SettingsPage() {
               ) : (
                 <Trash2 className="size-4" />
               )}
-              {deletingUser ? "Deleting…" : "Delete User"}
+              {deletingUser ? t("Deleting…", "جارٍ الحذف…") : t("Delete User", "حذف المستخدم")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
