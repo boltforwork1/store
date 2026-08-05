@@ -40,6 +40,10 @@ export async function updateStaffPassword(email: string, password: string): Prom
   return callAdminFunction({ action: "update_password", email, password })
 }
 
+export async function deleteStaffUser(email: string): Promise<{ ok: boolean; error?: string }> {
+  return callAdminFunction({ action: "delete", email })
+}
+
 export type StaffUser = {
   id: string
   email: string

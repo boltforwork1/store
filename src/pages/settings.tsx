@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { Building2, Save, Lock, Loader as Loader2, Check, Eye, EyeOff, Users, UserPlus, KeyRound, RefreshCw } from "lucide-react"
+import { Building2, Save, Lock, Loader as Loader2, Check, Eye, EyeOff, Users, UserPlus, KeyRound, RefreshCw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -24,9 +24,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { supabase } from "@/lib/supabase"
-import { createStaffUser, updateStaffPassword, type StaffUser } from "@/lib/admin"
+import { createStaffUser, updateStaffPassword, deleteStaffUser, type StaffUser } from "@/lib/admin"
 import { useAuth } from "@/hooks/use-auth"
 import { cn } from "@/lib/utils"
 
@@ -65,6 +75,8 @@ export function SettingsPage() {
   const [editPassword, setEditPassword] = useState("")
   const [showEditPassword, setShowEditPassword] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<StaffUser | null>(null)
+  const [deletingUser, setDeletingUser] = useState(false)
 
   const strength = passwordStrength(newPassword)
   const passwordsMatch = newPassword === confirmPassword
@@ -181,6 +193,29 @@ export function SettingsPage() {
       toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
     } finally {
       setSavingPassword(false)
+    }
+  }
+
+  async function handleDeleteUser() {
+    if (!deleteTarget) return
+
+    setDeletingUser(true)
+    const toastId = toast.loading(`Deleting ${deleteTarget.email}…`)
+
+    try {
+      const result = await deleteStaffUser(deleteTarget.email)
+      if (!result.ok) {
+        toast.error(result.error || "Failed to delete user", { id: toastId })
+        return
+      }
+
+      toast.success(`User ${deleteTarget.email} deleted`, { id: toastId })
+      setDeleteTarget(null)
+      await loadStaffUsers()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err), { id: toastId })
+    } finally {
+      setDeletingUser(false)
     }
   }
 
@@ -501,19 +536,30 @@ export function SettingsPage() {
                         })}
                       </TableCell>
                       <TableCell className="pr-4 text-right">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5"
-                          onClick={() => {
-                            setEditTarget(user)
-                            setEditPassword("")
-                            setShowEditPassword(false)
-                          }}
-                        >
-                          <KeyRound className="size-3.5" />
-                          Edit Password
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={() => {
+                              setEditTarget(user)
+                              setEditPassword("")
+                              setShowEditPassword(false)
+                            }}
+                          >
+                            <KeyRound className="size-3.5" />
+                            Edit Password
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 text-destructive hover:text-destructive"
+                            onClick={() => setDeleteTarget(user)}
+                          >
+                            <Trash2 className="size-3.5" />
+                            Delete
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -603,6 +649,46 @@ export function SettingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete User Confirmation */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingUser) setDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="size-5 text-destructive" />
+              Delete User
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the account for{" "}
+              <span className="font-medium text-foreground">{deleteTarget?.email}</span>.
+              They will no longer be able to sign in. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingUser}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                void handleDeleteUser()
+              }}
+              disabled={deletingUser}
+              className="gap-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingUser ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Trash2 className="size-4" />
+              )}
+              {deletingUser ? "Deleting…" : "Delete User"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

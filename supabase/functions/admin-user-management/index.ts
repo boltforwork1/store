@@ -32,7 +32,12 @@ type UpdatePasswordBody = {
   password?: unknown
 }
 
-type RequestBody = CreateUserBody | UpdatePasswordBody
+type DeleteUserBody = {
+  action: "delete"
+  email?: unknown
+}
+
+type RequestBody = CreateUserBody | UpdatePasswordBody | DeleteUserBody
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -41,12 +46,15 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
-async function verifyCaller(authHeader: string | null): Promise<boolean> {
-  if (!authHeader) return false
+const ADMIN_EMAIL = "kmg.fba@gmail.com"
+
+async function verifyCaller(authHeader: string | null): Promise<{ valid: boolean; email: string | null }> {
+  if (!authHeader) return { valid: false, email: null }
   const token = authHeader.replace(/^Bearer\s+/i, "").trim()
-  if (!token) return false
+  if (!token) return { valid: false, email: null }
   const { data } = await supabase.auth.getUser(token)
-  return data.user !== null
+  if (!data.user) return { valid: false, email: null }
+  return { valid: true, email: data.user.email ?? null }
 }
 
 async function createUser(email: string, password: string): Promise<Response> {
@@ -78,6 +86,39 @@ async function createUser(email: string, password: string): Promise<Response> {
   }
 
   return json({ ok: true, user: { id: user.id, email: user.email ?? email } })
+}
+
+async function deleteUser(email: string): Promise<Response> {
+  const { data: list, error: listError } = await supabase.auth.admin.listUsers()
+
+  if (listError) {
+    return json({ ok: false, error: listError.message }, 500)
+  }
+
+  const target = (list.users ?? []).find(
+    (u) => u.email?.toLowerCase() === email.toLowerCase()
+  )
+
+  if (!target) {
+    return json({ ok: false, error: "User not found." }, 404)
+  }
+
+  if (target.email?.toLowerCase() === ADMIN_EMAIL) {
+    return json({ ok: false, error: "The admin account cannot be deleted." }, 400)
+  }
+
+  const { error: deleteError } = await supabase.auth.admin.deleteUser(target.id)
+
+  if (deleteError) {
+    return json({ ok: false, error: deleteError.message }, 400)
+  }
+
+  await supabase
+    .from("staff_users")
+    .delete()
+    .eq("id", target.id)
+
+  return json({ ok: true })
 }
 
 async function updatePassword(email: string, password: string): Promise<Response> {
@@ -113,25 +154,34 @@ Deno.serve(async (req: Request) => {
 
   try {
     const authHeader = req.headers.get("Authorization")
-    if (!(await verifyCaller(authHeader))) {
+    const caller = await verifyCaller(authHeader)
+    if (!caller.valid) {
       return json({ ok: false, error: "Unauthorized." }, 401)
     }
 
     const parsed = (await req.json().catch(() => ({}))) as RequestBody
 
-    if (parsed.action !== "create" && parsed.action !== "update_password") {
+    if (parsed.action !== "create" && parsed.action !== "update_password" && parsed.action !== "delete") {
       return json(
-        { ok: false, error: "`action` must be \"create\" or \"update_password\"." },
+        { ok: false, error: "`action` must be \"create\", \"update_password\", or \"delete\"." },
         400
       )
     }
 
     const email = typeof parsed.email === "string" ? parsed.email.trim() : ""
-    const password = typeof parsed.password === "string" ? parsed.password : ""
 
     if (!EMAIL_REGEX.test(email)) {
       return json({ ok: false, error: "A valid email is required." }, 400)
     }
+
+    if (parsed.action === "delete") {
+      if (caller.email?.toLowerCase() !== ADMIN_EMAIL) {
+        return json({ ok: false, error: "Only the admin can delete users." }, 403)
+      }
+      return await deleteUser(email)
+    }
+
+    const password = typeof parsed.password === "string" ? parsed.password : ""
     if (password.length < MIN_PASSWORD_LENGTH) {
       return json(
         { ok: false, error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` },
