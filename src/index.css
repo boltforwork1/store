@@ -151,6 +151,10 @@
   }
 }
 
+html[lang="ar"] body {
+  font-family: "Cairo", system-ui, sans-serif;
+}
+
 @media print {
   body * {
     visibility: hidden;

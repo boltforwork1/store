@@ -32,6 +32,7 @@ import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 import { computeDisplayStatus, statusBadgeClass, computeDisplayTotal, isRevenueEligible } from "@/lib/order-status"
 import type { OrderItem } from "@/lib/types"
+import { useLanguage } from "@/components/language-provider"
 
 type Kpi = {
   title: string
@@ -66,6 +67,7 @@ const ordersChartConfig = {
 }
 
 export function OverviewPage() {
+  const { t } = useLanguage()
   const [loading, setLoading] = useState(true)
   const [kpis, setKpis] = useState<Kpi[]>([])
   const [revenueData, setRevenueData] = useState<RevenuePoint[]>([])
@@ -144,36 +146,36 @@ export function OverviewPage() {
 
     setKpis([
       {
-        title: "Total Revenue",
+        title: t("Total Revenue", "إجمالي الأرباح"),
         value: `${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         change: null,
         trend: null,
         icon: DollarSign,
-        description: "from confirmed & shipped orders",
+        description: t("from confirmed & shipped orders", "من الطلبات المؤكدة والمرسلة"),
       },
       {
-        title: "Total Orders",
+        title: t("Total Orders", "إجمالي الطلبات"),
         value: orders.length > 0 ? orders.length.toLocaleString() : "—",
         change: null,
         trend: null,
         icon: ShoppingCart,
-        description: "from synced FBPI orders",
+        description: t("from synced FBPI orders", "من طلبات FBPI المتزامنة"),
       },
       {
-        title: "Active Products",
+        title: t("Active Products", "المنتجات النشطة"),
         value: activeProducts > 0 ? activeProducts.toLocaleString() : "—",
         change: null,
         trend: null,
         icon: Package,
-        description: "in catalog",
+        description: t("in catalog", "في الكتالوج"),
       },
       {
-        title: "Total Products",
+        title: t("Total Products", "إجمالي المنتجات"),
         value: products.length > 0 ? products.length.toLocaleString() : "—",
         change: null,
         trend: null,
         icon: Users,
-        description: "synced from Noon",
+        description: t("synced from Noon", "متزامن من نون"),
       },
     ])
 
@@ -228,15 +230,17 @@ export function OverviewPage() {
               <Database className="size-6 text-muted-foreground" />
             </div>
             <div className="space-y-1.5">
-              <h3 className="text-lg font-semibold">No data yet</h3>
+              <h3 className="text-lg font-semibold">{t("No data yet", "لا توجد بيانات بعد")}</h3>
               <p className="text-sm text-muted-foreground">
-                Your dashboard is connected to the Noon Partner API. Once you run a
-                catalog sync, products and orders will populate here automatically.
+                {t(
+                  "Your dashboard is connected to the Noon Partner API. Once you run a catalog sync, products and orders will populate here automatically.",
+                  "لوحة التحكم الخاصة بك متصلة بواجهة برمجة الشريك نون. بمجرد تشغيل مزامنة الكتالوج، ستظهر المنتجات والطلبات هنا تلقائياً."
+                )}
               </p>
             </div>
             <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
               <RefreshCw className="size-3.5" />
-              Refresh
+              {t("Refresh", "تحديث")}
             </Button>
           </CardContent>
         </Card>
@@ -300,9 +304,9 @@ export function OverviewPage() {
         <Card className="lg:col-span-2">
           <CardHeader className="pb-4">
             <div>
-              <CardTitle className="text-base">Revenue Overview</CardTitle>
+              <CardTitle className="text-base">{t("Revenue Overview", "نظرة عامة على الأرباح")}</CardTitle>
               <CardDescription className="mt-1">
-                Monthly revenue from synced orders
+                {t("Monthly revenue from synced orders", "الأرباح الشهرية من الطلبات المتزامنة")}
               </CardDescription>
             </div>
           </CardHeader>
@@ -325,7 +329,7 @@ export function OverviewPage() {
               </ChartContainer>
             ) : (
               <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground">
-                Revenue charts will appear once orders are received
+                {t("Revenue charts will appear once orders are received", "ستظهر رسوم الأرباح بمجرد استلام الطلبات")}
               </div>
             )}
           </CardContent>
@@ -334,8 +338,8 @@ export function OverviewPage() {
         {/* Category Donut */}
         <Card>
           <CardHeader className="pb-4">
-            <CardTitle className="text-base">Sales by Category</CardTitle>
-            <CardDescription>Revenue distribution from synced data</CardDescription>
+            <CardTitle className="text-base">{t("Sales by Category", "المبيعات حسب الفئة")}</CardTitle>
+            <CardDescription>{t("Revenue distribution from synced data", "توزيع الأرباح من البيانات المتزامنة")}</CardDescription>
           </CardHeader>
           <CardContent>
             {categoryData.length > 0 ? (
@@ -364,7 +368,7 @@ export function OverviewPage() {
               </>
             ) : (
               <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
-                Category breakdown will appear after sync
+                {t("Category breakdown will appear after sync", "سيظهر تفصيل الفئات بعد المزامنة")}
               </div>
             )}
           </CardContent>
@@ -376,8 +380,8 @@ export function OverviewPage() {
         {/* Weekly Orders Bar */}
         <Card>
           <CardHeader className="pb-4">
-            <CardTitle className="text-base">Weekly Orders</CardTitle>
-            <CardDescription>Orders received this week</CardDescription>
+            <CardTitle className="text-base">{t("Weekly Orders", "طلبات الأسبوع")}</CardTitle>
+            <CardDescription>{t("Orders received this week", "الطلبات المستلمة هذا الأسبوع")}</CardDescription>
           </CardHeader>
           <CardContent>
             {weeklyOrders.length > 0 ? (
@@ -392,7 +396,7 @@ export function OverviewPage() {
               </ChartContainer>
             ) : (
               <div className="flex h-[180px] items-center justify-center text-sm text-muted-foreground">
-                Order trends will appear once orders are received
+                {t("Order trends will appear once orders are received", "ستظهر اتجاهات الطلبات بمجرد استلام الطلبات")}
               </div>
             )}
           </CardContent>
@@ -402,8 +406,8 @@ export function OverviewPage() {
         <Card className="lg:col-span-2">
           <CardHeader className="pb-4">
             <div>
-              <CardTitle className="text-base">Recent Orders</CardTitle>
-              <CardDescription>Latest orders from Noon webhooks</CardDescription>
+              <CardTitle className="text-base">{t("Recent Orders", "أحدث الطلبات")}</CardTitle>
+              <CardDescription>{t("Latest orders from Noon webhooks", "أحدث الطلبات من خطافات نون")}</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -437,7 +441,7 @@ export function OverviewPage() {
               </div>
             ) : (
               <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
-                Orders will appear here once Noon sends webhook events
+                {t("Orders will appear here once Noon sends webhook events", "ستظهر الطلبات هنا بمجرد إرسال نون لأحداث الويبهوك")}
               </div>
             )}
           </CardContent>

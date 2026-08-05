@@ -26,53 +26,55 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
+import { useLanguage } from "@/components/language-provider"
 
 const navItems = [
   {
-    title: "Overview",
+    title: { en: "Overview", ar: "نظرة عامة" },
     url: "/overview",
     icon: LayoutDashboard,
   },
   {
-    title: "Products",
+    title: { en: "Products", ar: "المنتجات" },
     url: "/products",
     icon: Package,
   },
   {
-    title: "Inventory",
+    title: { en: "Inventory", ar: "مخزون نون" },
     url: "/inventory",
     icon: Warehouse,
   },
   {
-    title: "Internal Stock",
+    title: { en: "Internal Stock", ar: "المخزون الداخلي" },
     url: "/internal-stock",
     icon: Boxes,
   },
   {
-    title: "Orders",
+    title: { en: "Orders", ar: "الطلبات" },
     url: "/orders",
     icon: ShoppingCart,
   },
   {
-    title: "Documents",
+    title: { en: "Documents", ar: "المستندات" },
     url: "/documents",
     icon: FileText,
   },
   {
-    title: "Accounting",
+    title: { en: "Accounting", ar: "الحسابات" },
     url: "/accounting",
     icon: Calculator,
   },
   {
-    title: "Settings",
+    title: { en: "Settings", ar: "الإعدادات" },
     url: "/settings",
     icon: Settings,
   },
-]
+] as const
 
 export function AppSidebar() {
   const location = useLocation()
   const { user } = useAuth()
+  const { lang, t } = useLanguage()
   const userEmail = user?.email ?? ""
   const userInitial = userEmail.charAt(0).toUpperCase() || "U"
   const userName = user?.user_metadata?.full_name ?? userEmail.split("@")[0] ?? "User"
@@ -96,20 +98,21 @@ export function AppSidebar() {
       <SidebarContent className="py-2">
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-medium uppercase tracking-widest text-muted-foreground/70">
-            Main Menu
+            {t("Main Menu", "القائمة الرئيسية")}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
                 const isActive =
                   location.pathname === item.url ||
-                  (item.url !== "/" && location.pathname.startsWith(item.url))
+                  location.pathname.startsWith(item.url + "/")
+                const itemTitle = item.title[lang]
                 return (
-                  <SidebarMenuItem key={item.title}>
+                  <SidebarMenuItem key={item.url}>
                     <SidebarMenuButton
                       asChild
                       isActive={isActive}
-                      tooltip={item.title}
+                      tooltip={itemTitle}
                       className={cn(
                         "rounded-lg transition-all duration-150",
                         isActive &&
@@ -118,7 +121,7 @@ export function AppSidebar() {
                     >
                       <NavLink to={item.url} className="flex items-center gap-2.5">
                         <item.icon className="size-4 shrink-0" />
-                        <span className="font-medium">{item.title}</span>
+                        <span className="font-medium">{itemTitle}</span>
                       </NavLink>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -135,7 +138,7 @@ export function AppSidebar() {
             <SidebarMenuButton
               size="lg"
               className="rounded-lg"
-              tooltip="User Profile"
+              tooltip={t("User Profile", "ملف المستخدم")}
             >
               <Avatar className="size-7 shrink-0">
                 <AvatarImage src="" alt={userName} />

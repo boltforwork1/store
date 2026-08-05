@@ -20,16 +20,18 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { useTheme } from "@/components/theme-provider"
+import { useLanguage } from "@/components/language-provider"
+import { LanguageToggle } from "@/components/language-toggle"
 
-const PAGE_TITLES: Record<string, { title: string; description: string }> = {
-  "/overview": { title: "Overview", description: "Your business at a glance" },
-  "/products": { title: "Products", description: "Manage your product catalog" },
-  "/inventory": { title: "Inventory", description: "Track stock levels and warehouses" },
-  "/orders": { title: "Orders", description: "Review and fulfill customer orders" },
-  "/documents": { title: "Documents", description: "Track and manage your documents" },
-  "/accounting": { title: "Accounting", description: "Track profits and financial records" },
-  "/internal-stock": { title: "Internal Stock", description: "Manage your own inventory manually" },
-  "/settings": { title: "Settings", description: "Configure your workspace" },
+const PAGE_TITLES: Record<string, { title: { en: string; ar: string }; description: { en: string; ar: string } }> = {
+  "/overview": { title: { en: "Overview", ar: "نظرة عامة" }, description: { en: "Your business at a glance", ar: "نظرة سريعة على عملك" } },
+  "/products": { title: { en: "Products", ar: "المنتجات" }, description: { en: "Manage your product catalog", ar: "إدارة كتالوج المنتجات" } },
+  "/inventory": { title: { en: "Inventory", ar: "المخزون" }, description: { en: "Track stock levels and warehouses", ar: "تتبع مستويات المخزون والمستودعات" } },
+  "/orders": { title: { en: "Orders", ar: "الطلبات" }, description: { en: "Review and fulfill customer orders", ar: "مراجعة وتلبيه طلبات العملاء" } },
+  "/documents": { title: { en: "Documents", ar: "المستندات" }, description: { en: "Track and manage your documents", ar: "تتبع وإدارة مستنداتك" } },
+  "/accounting": { title: { en: "Accounting", ar: "الحسابات" }, description: { en: "Track profits and financial records", ar: "تتبع الأرباح والسجلات المالية" } },
+  "/internal-stock": { title: { en: "Internal Stock", ar: "المخزون الداخلي" }, description: { en: "Manage your own inventory manually", ar: "إدارة مخزونك الخاص يدوياً" } },
+  "/settings": { title: { en: "Settings", ar: "الإعدادات" }, description: { en: "Configure your workspace", ar: "تكوين مساحة العمل" } },
 }
 
 export function TopHeader() {
@@ -37,10 +39,13 @@ export function TopHeader() {
   const navigate = useNavigate()
   const { signOut, user } = useAuth()
   const { theme, setTheme } = useTheme()
+  const { lang } = useLanguage()
   const userEmail = user?.email ?? ""
   const userInitial = userEmail.charAt(0).toUpperCase() || "U"
   const userName = user?.user_metadata?.full_name ?? userEmail.split("@")[0] ?? "User"
-  const pageInfo = PAGE_TITLES[location.pathname] ?? { title: "Dashboard", description: "" }
+  const pageInfo = PAGE_TITLES[location.pathname] ?? { title: { en: "Dashboard", ar: "لوحة التحكم" }, description: { en: "", ar: "" } }
+  const pageTitle = pageInfo.title[lang]
+  const pageDescription = pageInfo.description[lang]
 
   return (
     <header className="sticky top-0 z-50 flex h-16 shrink-0 items-center gap-2 border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -49,9 +54,9 @@ export function TopHeader() {
         <Separator orientation="vertical" className="h-4" />
         <div className="hidden flex-col sm:flex">
           <h1 className="text-sm font-semibold leading-none text-foreground">
-            {pageInfo.title}
+            {pageTitle}
           </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">{pageInfo.description}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{pageDescription}</p>
         </div>
       </div>
 
@@ -105,6 +110,9 @@ export function TopHeader() {
         >
           <SunMoon className="size-4" />
         </Button>
+
+        {/* Language toggle */}
+        <LanguageToggle />
 
         {/* User avatar */}
         <DropdownMenu>
