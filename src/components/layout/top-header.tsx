@@ -137,10 +137,6 @@ export function TopHeader() {
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Billing</DropdownMenuItem>
-            <DropdownMenuItem>Team</DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
               onClick={async () => {
@@ -148,7 +144,7 @@ export function TopHeader() {
                 navigate("/login", { replace: true })
               }}
             >
-              Sign out
+              {lang === "ar" ? "تسجيل الخروج" : "Sign out"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
