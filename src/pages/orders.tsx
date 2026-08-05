@@ -49,6 +49,33 @@ import {
   isRevenueEligible,
   CANCELLED_OR_OOS,
 } from "@/lib/order-status"
+import { useLanguage } from "@/components/language-provider"
+
+function translateStatusLabel(status: string, t: (en: string, ar: string) => string): string {
+  const key = statusStyleKey(status)
+  switch (key) {
+    case "NEW":
+    case "PENDING":
+      return t("NEW", "جديد")
+    case "SHIPPED":
+      return t("SHIPPED", "مشحون")
+    case "CANCELLED":
+    case "CANCELLED_BY_CUSTOMER":
+      return t("CANCELLED", "ملغي")
+    case "OUT_OF_STOCK":
+      return t("OUT OF STOCK", "نفد من المخزون")
+    case "RETURNED":
+    case "REFUNDED":
+      return t("RETURNED", "مرتجع")
+    case "ACKNOWLEDGED":
+    case "CONFIRMED":
+      return t("CONFIRMED", "مؤكد")
+    case "COMPLETED":
+      return t("COMPLETED", "مكتمل")
+    default:
+      return status
+  }
+}
 
 type OrderWithItemCount = Order & { item_count: number; awb_nr: string | null; integration_shipment_nr: string | null }
 
@@ -84,6 +111,7 @@ export function OrdersPage() {
   const [cancelTarget, setCancelTarget] = useState<OrderWithItemCount | null>(null)
   const [cancellingShipment, setCancellingShipment] = useState(false)
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
+  const { t, lang } = useLanguage()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -697,11 +725,11 @@ export function OrdersPage() {
   }
 
   const tabs = [
-    { label: "All Orders", value: "all", count: statusCounts.all },
-    { label: "New", value: "new", count: statusCounts.new },
-    { label: "Shipped", value: "shipped", count: statusCounts.shipped },
-    { label: "Cancelled", value: "cancelled", count: statusCounts.cancelled },
-    { label: "Returned", value: "returned", count: statusCounts.returned },
+    { label: t("All Orders", "جميع الطلبات"), value: "all", count: statusCounts.all },
+    { label: t("New", "جديد"), value: "new", count: statusCounts.new },
+    { label: t("Shipped", "مشحون"), value: "shipped", count: statusCounts.shipped },
+    { label: t("Cancelled", "ملغي"), value: "cancelled", count: statusCounts.cancelled },
+    { label: t("Returned", "مرتجع"), value: "returned", count: statusCounts.returned },
   ]
 
   const filtered = orders.filter((o) => {
@@ -746,19 +774,19 @@ export function OrdersPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Orders</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{t("Orders", "الطلبات")}</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {orders.length} total orders · {statusCounts.new} new
+            {t(`${orders.length} total orders`, `إجمالي الطلبات ${orders.length}`)} · {t(`${statusCounts.new} new`, `${statusCounts.new} جديد`)}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
             <RefreshCw className="size-3.5" />
-            Refresh
+            {t("Refresh", "تحديث")}
           </Button>
           <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCsv}>
             <Download className="size-3.5" />
-            Export CSV
+            {t("Export CSV", "تصدير CSV")}
           </Button>
         </div>
       </div>
@@ -772,8 +800,8 @@ export function OrdersPage() {
                 <ShoppingCart className="size-4 text-muted-foreground" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="text-sm">Total Orders</CardTitle>
-                <CardDescription className="text-xs">Synced from Noon</CardDescription>
+                <CardTitle className="text-sm">{t("Total Orders", "إجمالي الطلبات")}</CardTitle>
+                <CardDescription className="text-xs">{t("Synced from Noon", "متزامنة من نون")}</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -788,8 +816,8 @@ export function OrdersPage() {
                 <Boxes className="size-4 text-muted-foreground" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="text-sm">Total Line Items</CardTitle>
-                <CardDescription className="text-xs">Across all orders</CardDescription>
+                <CardTitle className="text-sm">{t("Total Line Items", "إجمالي العناصر")}</CardTitle>
+                <CardDescription className="text-xs">{t("Across all orders", "عبر جميع الطلبات")}</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -806,8 +834,8 @@ export function OrdersPage() {
                 <Database className="size-4 text-muted-foreground" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="text-sm">Total Revenue</CardTitle>
-                <CardDescription className="text-xs">Confirmed & shipped orders</CardDescription>
+                <CardTitle className="text-sm">{t("Total Revenue", "إجمالي الأرباح")}</CardTitle>
+                <CardDescription className="text-xs">{t("Confirmed & shipped orders", "الطلبات المؤكدة والمشحونة")}</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -833,7 +861,7 @@ export function OrdersPage() {
         <CardContent>
           <form onSubmit={handleSyncOrders} className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1 space-y-1.5">
-              <Label htmlFor="warehouse-code">Warehouse Code</Label>
+              <Label htmlFor="warehouse-code">{t("Warehouse Code", "كود المستودع")}</Label>
               <Input
                 id="warehouse-code"
                 placeholder="e.g. W00210108EG"
@@ -849,7 +877,7 @@ export function OrdersPage() {
               ) : (
                 <RefreshCw className="size-3.5" />
               )}
-              {syncing ? "Syncing…" : "Sync Orders"}
+              {syncing ? t("Syncing…", "جارٍ المزامنة…") : t("Sync Orders", "مزامنة الطلبات")}
             </Button>
             <Button
               type="button"
@@ -863,7 +891,7 @@ export function OrdersPage() {
               ) : (
                 <Wrench className="size-3.5" />
               )}
-              {creatingTestOrder ? "Creating…" : "Create Test Order"}
+              {creatingTestOrder ? t("Creating…", "جارٍ الإنشاء…") : t("Create Test Order", "إنشاء طلب تجريبي")}
             </Button>
             <Button
               type="button"
@@ -877,7 +905,7 @@ export function OrdersPage() {
               ) : (
                 <Trash2 className="size-3.5" />
               )}
-              {clearingTestOrders ? "Clearing…" : "Clear Test Orders"}
+              {clearingTestOrders ? t("Clearing…", "جارٍ المسح…") : t("Clear Test Orders", "مسح الطلبات التجريبية")}
             </Button>
           </form>
         </CardContent>
@@ -887,17 +915,19 @@ export function OrdersPage() {
         <Card className="flex flex-col items-center justify-center py-16 text-center">
           <CardContent className="space-y-2">
             <Database className="mx-auto size-10 text-muted-foreground/40" />
-            <p className="text-sm font-medium">No orders yet</p>
+            <p className="text-sm font-medium">{t("No orders yet", "لا توجد طلبات بعد")}</p>
             <p className="text-xs text-muted-foreground max-w-sm">
-              Enter your warehouse code above and click "Sync Orders" to pull
-              live orders from the Noon FBPI API.
+              {t(
+                'Enter your warehouse code above and click "Sync Orders" to pull live orders from the Noon FBPI API.',
+                'أدخل كود المستودع أعلاه وانقر على "مزامنة الطلبات" لسحب الطلبات المباشرة من واجهة FBPI لنون.'
+              )}
             </p>
           </CardContent>
         </Card>
       ) : (
         <>
           {/* Tab bar */}
-          <div className="flex gap-1 overflow-x-auto rounded-lg bg-muted p-1">
+          <div className="flex gap-1 overflow-x-auto rounded-lg bg-muted p-1 flex-row">
             {tabs.map((tab) => (
               <button
                 key={tab.value}
@@ -927,10 +957,10 @@ export function OrdersPage() {
           {/* Filters */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className={cn("absolute top-1/2 size-4 -translate-y-1/2 text-muted-foreground", lang === "ar" ? "right-3" : "left-3")} />
               <Input
-                placeholder="Search by order number or warehouse…"
-                className="pl-9 bg-background"
+                placeholder={t("Search by order number or warehouse…", "البحث برقم الطلب أو المستودع…")}
+                className={cn("bg-background text-start", lang === "ar" ? "pr-9" : "pl-9")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -941,15 +971,15 @@ export function OrdersPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all-time">All time</SelectItem>
-                  <SelectItem value="today">Today</SelectItem>
-                  <SelectItem value="week">This week</SelectItem>
-                  <SelectItem value="month">This month</SelectItem>
+                  <SelectItem value="all-time">{t("All time", "كل الأوقات")}</SelectItem>
+                  <SelectItem value="today">{t("Today", "اليوم")}</SelectItem>
+                  <SelectItem value="week">{t("This week", "هذا الأسبوع")}</SelectItem>
+                  <SelectItem value="month">{t("This month", "هذا الشهر")}</SelectItem>
                 </SelectContent>
               </Select>
               <Button variant="outline" size="sm" className="gap-1.5">
                 <Filter className="size-3.5" />
-                Filter
+                {t("Filter", "تصفية")}
               </Button>
             </div>
           </div>
@@ -960,20 +990,20 @@ export function OrdersPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-10 pl-6"></TableHead>
-                    <TableHead className="w-32">Order Number</TableHead>
-                    <TableHead>Warehouse</TableHead>
-                    <TableHead>Created At</TableHead>
-                    <TableHead className="text-right">Items</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="pr-6">Status</TableHead>
+                    <TableHead className="w-10 ps-6"></TableHead>
+                    <TableHead className="w-32 text-start">{t("Order Number", "رقم الطلب")}</TableHead>
+                    <TableHead className="text-start">{t("Warehouse", "المستودع")}</TableHead>
+                    <TableHead className="text-start">{t("Created At", "تاريخ الإنشاء")}</TableHead>
+                    <TableHead className="text-end">{t("Items", "العناصر")}</TableHead>
+                    <TableHead className="text-end">{t("Total", "الإجمالي")}</TableHead>
+                    <TableHead className="pe-6 text-start">{t("Status", "الحالة")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
-                        No orders match the current filters.
+                        {t("No orders match the current filters.", "لا توجد طلبات تطابق المرشحات الحالية.")}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -989,19 +1019,19 @@ export function OrdersPage() {
                             className="cursor-pointer hover:bg-muted/30"
                             onClick={() => toggleRow(order)}
                           >
-                            <TableCell className="pl-6">
+                            <TableCell className="ps-6">
                               <div className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent">
                                 {isOpen ? (
                                   <ChevronDown className="size-4" />
                                 ) : (
-                                  <ChevronRight className="size-4" />
+                                  <ChevronRight className={cn("size-4", lang === "ar" && "rotate-180")} />
                                 )}
                               </div>
                             </TableCell>
-                            <TableCell className="font-mono text-sm font-medium">
+                            <TableCell className="font-mono text-sm font-medium text-start">
                               {order.fbpi_order_nr ?? order.noon_order_id ?? order.id.slice(0, 8)}
                             </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
+                            <TableCell className="text-sm text-muted-foreground text-start">
                               {order.warehouse_code ? (
                                 <span className="inline-flex items-center gap-1.5">
                                   <Warehouse className="size-3.5" />
@@ -1011,22 +1041,22 @@ export function OrdersPage() {
                                 "—"
                               )}
                             </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
+                            <TableCell className="text-sm text-muted-foreground text-start">
                               {(order.order_created_at ?? order.order_date)
                                 ? new Date(order.order_created_at ?? order.order_date ?? "").toLocaleString()
                                 : "—"}
                             </TableCell>
-                            <TableCell className="text-right font-semibold tabular-nums">
+                            <TableCell className="text-end font-semibold tabular-nums">
                               {order.item_count}
                             </TableCell>
-                            <TableCell className="text-right font-semibold tabular-nums">
+                            <TableCell className="text-end font-semibold tabular-nums">
                               {(() => {
                                 const items = order.fbpi_order_nr ? itemsByOrder[order.fbpi_order_nr] : undefined
                                 const total = computeDisplayTotal(order.total_price, items)
                                 return total > 0 ? `${total.toFixed(2)}` : "—"
                               })()}
                             </TableCell>
-                            <TableCell className="pr-6">
+                            <TableCell className="pe-6 text-start">
                               {(() => {
                                 const dynStatus = displayOrderStatus(order)
                                 return (
@@ -1037,7 +1067,7 @@ export function OrdersPage() {
                                         "bg-muted text-muted-foreground border-border"
                                     )}
                                   >
-                                    {dynStatus}
+                                    {translateStatusLabel(dynStatus, t)}
                                   </span>
                                 )
                               })()}
@@ -1050,13 +1080,13 @@ export function OrdersPage() {
                                 {isLoadingThis ? (
                                   <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
                                     <Loader2 className="size-4 animate-spin" />
-                                    Loading line items…
+                                    {t("Loading line items…", "جارٍ تحميل العناصر…")}
                                   </div>
                                 ) : items && items.length > 0 ? (
                                   <div className="space-y-3">
                                     <div className="flex items-center justify-between gap-2">
                                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                        Line Items ({items.length})
+                                        {t(`Line Items (${items.length})`, `العناصر (${items.length})`)}
                                       </p>
                                       {isOrderFulfillable(order) && (
                                         <Button
@@ -1069,7 +1099,7 @@ export function OrdersPage() {
                                           }}
                                         >
                                           <Truck className="size-3" />
-                                          Fulfill Order
+                                          {t("Fulfill Order", "تلبية الطلب")}
                                         </Button>
                                       )}
                                       {order.status === "SHIPPED" && order.awb_nr && (
@@ -1083,7 +1113,7 @@ export function OrdersPage() {
                                           }}
                                         >
                                           <Printer className="size-3" />
-                                          Print Label
+                                          {t("Print Label", "طباعة الملصق")}
                                         </Button>
                                       )}
                                       {order.status === "SHIPPED" && order.integration_shipment_nr && (
@@ -1098,7 +1128,7 @@ export function OrdersPage() {
                                           }}
                                         >
                                           <Ban className="size-3" />
-                                          Cancel Shipment
+                                          {t("Cancel Shipment", "إلغاء الشحنة")}
                                         </Button>
                                       )}
                                     </div>
@@ -1106,12 +1136,12 @@ export function OrdersPage() {
                                       <Table>
                                         <TableHeader>
                                           <TableRow className="hover:bg-transparent">
-                                            <TableHead className="pl-4 w-16">Image</TableHead>
-                                            <TableHead>Product</TableHead>
-                                            <TableHead>MP Status</TableHead>
-                                            <TableHead>Integration Status</TableHead>
-                                            <TableHead className="pr-4 text-right">Price</TableHead>
-                                            <TableHead className="pr-4 text-right">Action</TableHead>
+                                            <TableHead className="ps-4 w-16">{t("Image", "الصورة")}</TableHead>
+                                            <TableHead className="text-start">{t("Product", "المنتج")}</TableHead>
+                                            <TableHead className="text-start">{t("MP Status", "حالة السوق")}</TableHead>
+                                            <TableHead className="text-start">{t("Integration Status", "حالة التكامل")}</TableHead>
+                                            <TableHead className="pe-4 text-end">{t("Price", "السعر")}</TableHead>
+                                            <TableHead className="pe-4 text-end">{t("Action", "إجراء")}</TableHead>
                                           </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -1119,7 +1149,7 @@ export function OrdersPage() {
                                             const title = item.product_name || item.partner_sku || item.mp_item_nr
                                             return (
                                             <TableRow key={item.mp_item_nr} className="hover:bg-muted/30">
-                                              <TableCell className="pl-4">
+                                              <TableCell className="ps-4">
                                                 <div
                                                   className={cn(
                                                     "flex size-10 items-center justify-center overflow-hidden rounded-md bg-muted",
@@ -1154,41 +1184,41 @@ export function OrdersPage() {
                                                   </div>
                                                 </div>
                                               </TableCell>
-                                              <TableCell>
+                                              <TableCell className="text-start">
                                                 <div className="flex flex-col gap-0.5">
                                                   <span className="text-sm font-medium leading-tight">{title}</span>
                                                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                                                     {item.partner_sku && (
-                                                      <span className="font-mono">SKU: {item.partner_sku}</span>
+                                                      <span className="font-mono">{t("SKU:", "رمز SKU:")} {item.partner_sku}</span>
                                                     )}
                                                     <span className="font-mono">#{item.mp_item_nr}</span>
                                                   </div>
                                                 </div>
                                               </TableCell>
-                                              <TableCell>
+                                              <TableCell className="text-start">
                                                 <span
                                                   className={cn(
                                                     "inline-flex rounded-full border px-2 py-0.5 text-xs font-medium",
                                                     statusBadgeClass(item.mp_status)
                                                   )}
                                                 >
-                                                  {formatItemStatus(item.mp_status)}
+                                                  {translateStatusLabel(formatItemStatus(item.mp_status), t)}
                                                 </span>
                                               </TableCell>
-                                              <TableCell>
+                                              <TableCell className="text-start">
                                                 <span
                                                   className={cn(
                                                     "inline-flex rounded-full border px-2 py-0.5 text-xs font-medium",
                                                     statusBadgeClass(item.integration_status)
                                                   )}
                                                 >
-                                                  {formatItemStatus(item.integration_status)}
+                                                  {translateStatusLabel(formatItemStatus(item.integration_status), t)}
                                                 </span>
                                               </TableCell>
-                                              <TableCell className="pr-4 text-right font-semibold tabular-nums">
+                                              <TableCell className="pe-4 text-end font-semibold tabular-nums">
                                                 {item.price != null ? `${Number(item.price).toFixed(2)}` : "—"}
                                               </TableCell>
-                                              <TableCell className="pr-4 text-right">
+                                              <TableCell className="pe-4 text-end">
                                                 {canMarkOos(item) ? (
                                                   <Button
                                                     variant="outline"
@@ -1208,7 +1238,7 @@ export function OrdersPage() {
                                                     ) : (
                                                       <Ban className="size-3" />
                                                     )}
-                                                    Mark OOS
+                                                    {t("Mark OOS", "تحديد كنافد")}
                                                   </Button>
                                                 ) : (
                                                   <span className="text-xs text-muted-foreground">—</span>
@@ -1223,7 +1253,7 @@ export function OrdersPage() {
                                   </div>
                                 ) : (
                                   <p className="py-4 text-sm text-muted-foreground">
-                                    No line items found for this order.
+                                    {t("No line items found for this order.", "لا توجد عناصر لهذا الطلب.")}
                                   </p>
                                 )}
                               </TableCell>
@@ -1240,10 +1270,10 @@ export function OrdersPage() {
             {/* Footer */}
             <div className="flex items-center justify-between border-t px-6 py-3">
               <p className="text-xs text-muted-foreground">
-                Showing {filtered.length} of {orders.length} orders
+                {t(`Showing ${filtered.length} of ${orders.length} orders`, `عرض ${filtered.length} من ${orders.length} طلبات`)}
               </p>
               <p className="text-xs text-muted-foreground">
-                Click a row to view line items
+                {t("Click a row to view line items", "انقر على الصف لعرض التفاصيل")}
               </p>
             </div>
           </Card>
@@ -1255,7 +1285,7 @@ export function OrdersPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 print:static print:bg-transparent print:p-0">
           <div className="relative max-h-[90vh] overflow-auto bg-white p-4 print:overflow-visible print:p-0">
             <div className="mb-3 flex items-center justify-between print:hidden">
-              <h2 className="text-lg font-semibold">Shipping Label Preview</h2>
+              <h2 className="text-lg font-semibold">{t("Shipping Label Preview", "معاينة ملصق الشحن")}</h2>
               <Button
                 variant="ghost"
                 size="sm"
@@ -1270,11 +1300,11 @@ export function OrdersPage() {
             />
             <div className="mt-4 flex justify-end gap-2 print:hidden">
               <Button variant="outline" onClick={() => setLabelTarget(null)}>
-                Close
+                {t("Close", "إغلاق")}
               </Button>
               <Button onClick={handlePrint}>
                 <Printer className="size-4" />
-                Print
+                {t("Print", "طباعة")}
               </Button>
             </div>
           </div>
@@ -1294,15 +1324,17 @@ export function OrdersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="size-5 text-red-600" />
-              Cancel Shipment?
+              {t("Cancel Shipment?", "إلغاء الشحنة؟")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to cancel this shipment? This will cancel all
-              items inside it on Noon and cannot be undone.
+              {t(
+                "Are you sure you want to cancel this shipment? This will cancel all items inside it on Noon and cannot be undone.",
+                "هل أنت متأكد أنك تريد إلغاء هذه الشحنة؟ سيؤدي هذا إلى إلغاء جميع العناصر بداخلها على نون ولا يمكن التراجع عنه."
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={cancellingShipment}>Keep Shipment</AlertDialogCancel>
+            <AlertDialogCancel disabled={cancellingShipment}>{t("Keep Shipment", "إبقاء الشحنة")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault()
@@ -1314,7 +1346,7 @@ export function OrdersPage() {
               {cancellingShipment ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                "Yes, cancel shipment"
+                t("Yes, cancel shipment", "نعم، إلغاء الشحنة")
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -1334,15 +1366,17 @@ export function OrdersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="size-5 text-red-600" />
-              Mark Item as Out of Stock?
+              {t("Mark Item as Out of Stock?", "تحديد العنصر كنفد من المخزون؟")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to mark this item as Out of Stock? This will
-              cancel it on Noon's side and cannot be undone.
+              {t(
+                "Are you sure you want to mark this item as Out of Stock? This will cancel it on Noon's side and cannot be undone.",
+                "هل أنت متأكد أنك تريد تحديد هذا العنصر كنفد من المخزون؟ سيؤدي هذا إلى إلغائه على جانب نون ولا يمكن التراجع عنه."
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={markingOos}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={markingOos}>{t("Cancel", "إلغاء")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault()
@@ -1354,7 +1388,7 @@ export function OrdersPage() {
               {markingOos ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                "Yes, mark as Out of Stock"
+                t("Yes, mark as Out of Stock", "نعم، تحديد كنفد من المخزون")
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -1374,17 +1408,18 @@ export function OrdersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="size-5 text-red-600" />
-              Clear Test Orders?
+              {t("Clear Test Orders?", "مسح الطلبات التجريبية؟")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete all orders whose order number starts
-              with "TEST-" along with their associated line items. This action
-              cannot be undone.
+              {t(
+                'This will permanently delete all orders whose order number starts with "TEST-" along with their associated line items. This action cannot be undone.',
+                'سيؤدي هذا إلى حذف جميع الطلبات التي يبدأ رقمها بـ "TEST-" نهائياً مع العناصر المرتبطة بها. لا يمكن التراجع عن هذا الإجراء.'
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={clearingTestOrders}>
-              Cancel
+              {t("Cancel", "إلغاء")}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
@@ -1397,7 +1432,7 @@ export function OrdersPage() {
               {clearingTestOrders ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                "Yes, clear test orders"
+                t("Yes, clear test orders", "نعم، مسح الطلبات التجريبية")
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -1440,15 +1475,17 @@ export function OrdersPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Truck className="size-5" />
-              Create Shipment
+              {t("Create Shipment", "إنشاء شحنة")}
             </DialogTitle>
             <DialogDescription>
-              Fulfill order{" "}
+              {t("Fulfill order", "تلبية الطلب")}{" "}
               <span className="font-mono font-medium">
                 {shipmentTarget?.fbpi_order_nr}
               </span>{" "}
-              via Noon. Select the items to ship, then click "Get Noon AWB" to
-              generate a real tracking number before creating the shipment.
+              {t(
+                'via Noon. Select the items to ship, then click "Get Noon AWB" to generate a real tracking number before creating the shipment.',
+                'عبر نون. حدد العناصر للشحن، ثم انقر على "احصل على AWB من نون" لإنشاء رقم تتبع حقيقي قبل إنشاء الشحنة.'
+              )}
             </DialogDescription>
           </DialogHeader>
 
@@ -1456,7 +1493,7 @@ export function OrdersPage() {
             {/* Items selection */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Items to Ship
+                {t("Items to Ship", "العناصر للشحن")}
               </Label>
               <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border p-2">
                 {(shipmentTarget?.fbpi_order_nr
@@ -1490,7 +1527,7 @@ export function OrdersPage() {
                   ? itemsByOrder[shipmentTarget.fbpi_order_nr]
                   : [])?.length === 0 && (
                   <p className="py-4 text-center text-xs text-muted-foreground">
-                    No items available.
+                    {t("No items available.", "لا توجد عناصر متاحة.")}
                   </p>
                 )}
               </div>
@@ -1499,12 +1536,12 @@ export function OrdersPage() {
             {/* AWB number input */}
             <div className="space-y-1.5">
               <Label htmlFor="awb-nr">
-                AWB Number <span className="text-destructive">*</span>
+                {t("AWB Number", "رقم AWB")} <span className="text-destructive">*</span>
               </Label>
               <div className="flex gap-2">
                 <Input
                   id="awb-nr"
-                  placeholder={'Click "Get Noon AWB" to generate'}
+                  placeholder={t('Click "Get Noon AWB" to generate', 'انقر على "احصل على AWB من نون" للإنشاء')}
                   value={shipmentAwb}
                   onChange={(e) => setShipmentAwb(e.target.value)}
                   className="bg-background"
@@ -1523,7 +1560,7 @@ export function OrdersPage() {
                   ) : (
                     <RefreshCw className="size-3.5" />
                   )}
-                  {generatingAwb ? "Generating…" : "Get Noon AWB"}
+                  {generatingAwb ? t("Generating…", "جارٍ الإنشاء…") : t("Get Noon AWB", "احصل على AWB من نون")}
                 </Button>
               </div>
             </div>
@@ -1547,7 +1584,7 @@ export function OrdersPage() {
               ) : (
                 <PackageCheck className="size-4" />
               )}
-              {creatingShipment ? "Creating…" : "Create Shipment"}
+              {creatingShipment ? t("Creating…", "جارٍ الإنشاء…") : t("Create Shipment", "إنشاء شحنة")}
             </Button>
           </DialogFooter>
         </DialogContent>
