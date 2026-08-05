@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
+import { useLanguage } from "@/components/language-provider"
 
 type Document = {
   id: string
@@ -49,6 +50,7 @@ function fmt(n: number): string {
 }
 
 export function DocumentsPage() {
+  const { t, lang } = useLanguage()
   const [loading, setLoading] = useState(true)
   const [documents, setDocuments] = useState<Document[]>([])
   const [search, setSearch] = useState("")
@@ -72,7 +74,7 @@ export function DocumentsPage() {
       .order("created_at", { ascending: false })
 
     if (error) {
-      toast.error("Failed to load documents: " + error.message)
+      toast.error(t("Failed to load documents", "فشل تحميل المستندات") + ": " + error.message)
       setDocuments([])
     } else {
       setDocuments((data ?? []) as Document[])
@@ -115,8 +117,8 @@ export function DocumentsPage() {
     const number = formNumber.trim()
     const amount = parseFloat(formAmount)
 
-    if (!number) { toast.error("Document number is required"); return }
-    if (!Number.isFinite(amount) || amount < 0) { toast.error("Total amount must be a valid number"); return }
+    if (!number) { toast.error(t("Document number is required", "رقم المستند مطلوب")); return }
+    if (!Number.isFinite(amount) || amount < 0) { toast.error(t("Total amount must be a valid number", "يجب أن يكون المبلغ الإجمالي رقماً صالحاً")); return }
 
     setSaving(true)
 
@@ -131,12 +133,12 @@ export function DocumentsPage() {
         .eq("id", editTarget.id)
 
       if (error) {
-        toast.error("Failed to update document: " + error.message)
+        toast.error(t("Failed to update document", "فشل تحديث المستند") + ": " + error.message)
         setSaving(false)
         return
       }
 
-      toast.success("Document updated")
+      toast.success(t("Document updated", "تم تحديث المستند"))
     } else {
       const { error } = await supabase.from("documents").insert({
         date: formDate,
@@ -145,12 +147,12 @@ export function DocumentsPage() {
       })
 
       if (error) {
-        toast.error("Failed to add document: " + error.message)
+        toast.error(t("Failed to add document", "فشل إضافة المستند") + ": " + error.message)
         setSaving(false)
         return
       }
 
-      toast.success("Document added")
+      toast.success(t("Document added", "تم إضافة المستند"))
     }
 
     resetForm()
@@ -169,12 +171,12 @@ export function DocumentsPage() {
       .eq("id", deleteTarget.id)
 
     if (error) {
-      toast.error("Failed to delete document: " + error.message)
+      toast.error(t("Failed to delete document", "فشل حذف المستند") + ": " + error.message)
       setDeleting(false)
       return
     }
 
-    toast.success("Document deleted")
+    toast.success(t("Document deleted", "تم حذف المستند"))
     setDeleteTarget(null)
     setDeleting(false)
     await load()
@@ -210,19 +212,19 @@ export function DocumentsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Documents</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{t("Documents", "المستندات")}</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Track and manage your documents
+            {t("Track and manage your documents", "تتبع وإدارة مستنداتك")}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
             <RefreshCw className="size-3.5" />
-            Refresh
+            {t("Refresh", "تحديث")}
           </Button>
           <Button size="sm" className="gap-1.5" onClick={openAddForm}>
             <Plus className="size-3.5" />
-            Add Document
+            {t("Add Document", "إضافة مستند")}
           </Button>
         </div>
       </div>
@@ -231,13 +233,13 @@ export function DocumentsPage() {
       {documents.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl border bg-gradient-to-br from-blue-50 to-indigo-50 p-4 dark:from-blue-950/40 dark:to-indigo-950/40">
-            <p className="text-sm text-muted-foreground">Total Documents</p>
+            <p className="text-sm text-muted-foreground">{t("Total Documents", "إجمالي المستندات")}</p>
             <p className="mt-1 text-2xl font-bold text-blue-700 dark:text-blue-300">
               {filtered.length}
             </p>
           </div>
           <div className="rounded-xl border bg-gradient-to-br from-emerald-50 to-teal-50 p-4 dark:from-emerald-950/40 dark:to-teal-950/40">
-            <p className="text-sm text-muted-foreground">Total Amount</p>
+            <p className="text-sm text-muted-foreground">{t("Total Amount", "إجمالي المبلغ")}</p>
             <p className="mt-1 text-2xl font-bold text-emerald-700 dark:text-emerald-300">
               {fmt(totalAmount)}
             </p>
@@ -248,18 +250,18 @@ export function DocumentsPage() {
       {/* Search bar */}
       {documents.length > 0 && (
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className={cn("absolute top-1/2 size-4 -translate-y-1/2 text-muted-foreground", lang === "ar" ? "right-3" : "left-3")} />
           <Input
-            placeholder="Search by document number…"
-            className="pl-9 bg-background"
+            placeholder={t("Search by document number…", "البحث برقم المستند…")}
+            className={cn("bg-background text-start", lang === "ar" ? "pr-9" : "pl-9")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           {search && (
             <button
               onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
+              className={cn("absolute top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground", lang === "ar" ? "left-3" : "right-3")}
+              aria-label={t("Clear search", "مسح البحث")}
             >
               <X className="size-4" />
             </button>
@@ -273,12 +275,12 @@ export function DocumentsPage() {
           <CardContent className="space-y-2">
             <FileText className="mx-auto size-10 text-muted-foreground/40" />
             <p className="text-sm font-medium">
-              {documents.length === 0 ? "No documents yet" : "No matching documents"}
+              {documents.length === 0 ? t("No documents yet", "لا توجد مستندات بعد") : t("No matching documents", "لا توجد مستندات مطابقة")}
             </p>
             <p className="text-xs text-muted-foreground max-w-sm">
               {documents.length === 0
-                ? 'Click "Add Document" to create your first document.'
-                : "Try a different search term."}
+                ? t('Click "Add Document" to create your first document.', 'انقر على "إضافة مستند" لإنشاء مستندك الأول.')
+                : t("Try a different search term.", "جرب كلمة بحث مختلفة.")}
             </p>
           </CardContent>
         </Card>
@@ -288,10 +290,10 @@ export function DocumentsPage() {
             <table className="w-full caption-bottom text-sm">
               <thead>
                 <tr className="bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-950 dark:to-indigo-950">
-                  <th className="h-11 px-4 text-left font-bold text-blue-800 dark:text-blue-200 whitespace-nowrap">Date</th>
-                  <th className="h-11 px-4 text-left font-bold text-blue-800 dark:text-blue-200 whitespace-nowrap">Document Number</th>
-                  <th className="h-11 px-4 text-right font-bold text-blue-800 dark:text-blue-200 whitespace-nowrap">Total Amount</th>
-                  <th className="h-11 px-4 text-center font-bold text-blue-800 dark:text-blue-200 whitespace-nowrap">Actions</th>
+                  <th className="h-11 px-4 text-start font-bold text-blue-800 dark:text-blue-200 whitespace-nowrap">{t("Date", "التاريخ")}</th>
+                  <th className="h-11 px-4 text-start font-bold text-blue-800 dark:text-blue-200 whitespace-nowrap">{t("Document Number", "رقم المستند")}</th>
+                  <th className="h-11 px-4 text-end font-bold text-blue-800 dark:text-blue-200 whitespace-nowrap">{t("Total Amount", "إجمالي المبلغ")}</th>
+                  <th className="h-11 px-4 text-center font-bold text-blue-800 dark:text-blue-200 whitespace-nowrap">{t("Actions", "الإجراءات")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -307,13 +309,13 @@ export function DocumentsPage() {
                         rowBg
                       )}
                     >
-                      <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                      <td className="px-4 py-3 whitespace-nowrap text-start text-muted-foreground">
                         {new Date(doc.date).toLocaleDateString()}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap font-mono text-xs font-medium">
+                      <td className="px-4 py-3 whitespace-nowrap text-start font-mono text-xs font-medium">
                         {doc.document_number}
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold tabular-nums whitespace-nowrap">
+                      <td className="px-4 py-3 text-end font-semibold tabular-nums whitespace-nowrap">
                         {fmt(Number(doc.total_amount))}
                       </td>
                       <td className="px-4 py-3 text-center whitespace-nowrap">
@@ -344,11 +346,11 @@ export function DocumentsPage() {
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 font-bold dark:from-blue-950/50 dark:to-indigo-950/50 dark:border-blue-800">
-                  <td className="px-4 py-3 text-blue-800 dark:text-blue-200">
-                    Totals ({filtered.length} documents)
+                  <td className="px-4 py-3 text-start text-blue-800 dark:text-blue-200">
+                    {t(`Totals (${filtered.length} documents)`, `الإجمالي (${filtered.length} مستندات)`)}
                   </td>
                   <td className="px-4 py-3" />
-                  <td className="px-4 py-3 text-right tabular-nums text-blue-800 dark:text-blue-200">
+                  <td className="px-4 py-3 text-end tabular-nums text-blue-800 dark:text-blue-200">
                     {fmt(totalAmount)}
                   </td>
                   <td className="px-4 py-3" />
@@ -365,17 +367,17 @@ export function DocumentsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {editTarget ? <Pencil className="size-5" /> : <FileText className="size-5" />}
-              {editTarget ? "Edit Document" : "Add Document"}
+              {editTarget ? t("Edit Document", "تعديل المستند") : t("Add Document", "إضافة مستند")}
             </DialogTitle>
             <DialogDescription>
               {editTarget
-                ? "Update the document details below."
-                : "Enter the document details. All fields are required."}
+                ? t("Update the document details below.", "حدّث تفاصيل المستند أدناه.")
+                : t("Enter the document details. All fields are required.", "أدخل تفاصيل المستند. جميع الحقول مطلوبة.")}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="doc-date">Date <span className="text-destructive">*</span></Label>
+              <Label htmlFor="doc-date">{t("Date", "التاريخ")} <span className="text-destructive">*</span></Label>
               <Input
                 id="doc-date"
                 type="date"
@@ -385,10 +387,10 @@ export function DocumentsPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="doc-number">Document Number <span className="text-destructive">*</span></Label>
+              <Label htmlFor="doc-number">{t("Document Number", "رقم المستند")} <span className="text-destructive">*</span></Label>
               <Input
                 id="doc-number"
-                placeholder="e.g. INV-2026-001"
+                placeholder={t("e.g. INV-2026-001", "مثال: INV-2026-001")}
                 value={formNumber}
                 onChange={(e) => setFormNumber(e.target.value)}
                 required
@@ -396,7 +398,7 @@ export function DocumentsPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="doc-amount">Total Amount <span className="text-destructive">*</span></Label>
+              <Label htmlFor="doc-amount">{t("Total Amount", "إجمالي المبلغ")} <span className="text-destructive">*</span></Label>
               <Input
                 id="doc-amount"
                 type="number"
@@ -415,11 +417,11 @@ export function DocumentsPage() {
                 onClick={() => { setFormOpen(false); setEditTarget(null) }}
                 disabled={saving}
               >
-                Cancel
+                {t("Cancel", "إلغاء")}
               </Button>
               <Button type="submit" disabled={saving} className="gap-1.5">
                 {saving ? <Loader2 className="size-4 animate-spin" /> : editTarget ? <Pencil className="size-4" /> : <Plus className="size-4" />}
-                {saving ? "Saving…" : editTarget ? "Save Changes" : "Add Document"}
+                {saving ? t("Saving…", "جارٍ الحفظ…") : editTarget ? t("Save Changes", "حفظ التغييرات") : t("Add Document", "إضافة مستند")}
               </Button>
             </DialogFooter>
           </form>
@@ -433,22 +435,22 @@ export function DocumentsPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete document?</AlertDialogTitle>
+            <AlertDialogTitle>{t("Delete document?", "حذف المستند؟")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove document
+              {t("This will permanently remove document", "سيؤدي هذا إلى حذف المستند")}
               <span className="font-medium text-foreground"> {deleteTarget?.document_number}</span>.
-              This action cannot be undone.
+              {t("This action cannot be undone.", "لا يمكن التراجع عن هذا الإجراء.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("Cancel", "إلغاء")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => { e.preventDefault(); handleDelete() }}
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleting ? <Loader2 className="size-4 animate-spin" /> : null}
-              {deleting ? "Deleting…" : "Delete"}
+              {deleting ? t("Deleting…", "جارٍ الحذف…") : t("Delete", "حذف")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
