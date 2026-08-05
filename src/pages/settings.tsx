@@ -27,6 +27,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { supabase } from "@/lib/supabase"
 import { createStaffUser, updateStaffPassword, type StaffUser } from "@/lib/admin"
+import { useAuth } from "@/hooks/use-auth"
 import { cn } from "@/lib/utils"
 
 function passwordStrength(pw: string): { score: number; label: string; color: string } {
@@ -46,6 +47,7 @@ function passwordStrength(pw: string): { score: number; label: string; color: st
 }
 
 export function SettingsPage() {
+  const { isAdmin } = useAuth()
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showNew, setShowNew] = useState(false)
@@ -69,8 +71,8 @@ export function SettingsPage() {
   const isValid = newPassword.length >= 8 && passwordsMatch
 
   useEffect(() => {
-    void loadStaffUsers()
-  }, [])
+    if (isAdmin) void loadStaffUsers()
+  }, [isAdmin])
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault()
@@ -192,7 +194,8 @@ export function SettingsPage() {
         </p>
       </div>
 
-      {/* Change Password */}
+      {/* Change Password — Admin only */}
+      {isAdmin && (
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
@@ -312,6 +315,7 @@ export function SettingsPage() {
           </form>
         </CardContent>
       </Card>
+      )}
 
       {/* Company Profile */}
       <Card>
@@ -366,7 +370,8 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* User Management Section */}
+      {/* User Management Section — Admin only */}
+      {isAdmin && (
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-4">
@@ -518,6 +523,7 @@ export function SettingsPage() {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Edit Password Dialog */}
       <Dialog
