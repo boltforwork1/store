@@ -42,6 +42,7 @@ import {
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 import { ProductNameAutocomplete } from "@/components/product-name-autocomplete"
+import { DocumentNumberAutocomplete } from "@/components/document-number-autocomplete"
 
 type FinanceRecord = {
   id: string
@@ -51,6 +52,7 @@ type FinanceRecord = {
   quantity: number
   cost_price: number
   selling_price: number
+  document_number: string | null
   created_at: string
 }
 
@@ -90,6 +92,7 @@ export function AccountingPage() {
   const [filterMonth, setFilterMonth] = useState(now.getMonth())
   const [search, setSearch] = useState("")
   const [inventoryNames, setInventoryNames] = useState<string[]>([])
+  const [documentNumbers, setDocumentNumbers] = useState<string[]>([])
 
   // Add-record form fields
   const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10))
@@ -98,12 +101,13 @@ export function AccountingPage() {
   const [formQty, setFormQty] = useState("1")
   const [formCost, setFormCost] = useState("")
   const [formSelling, setFormSelling] = useState("")
+  const [formDocNumber, setFormDocNumber] = useState("")
 
   const load = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from("finance_records")
-      .select("id, date, sku, product_name, quantity, cost_price, selling_price, created_at")
+      .select("id, date, sku, product_name, quantity, cost_price, selling_price, document_number, created_at")
       .order("date", { ascending: false })
       .order("created_at", { ascending: false })
 
@@ -134,6 +138,20 @@ export function AccountingPage() {
     })()
   }, [])
 
+  // Fetch document numbers from documents table for autocomplete suggestions
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from("documents")
+        .select("document_number")
+        .order("document_number", { ascending: true })
+      if (!error && data) {
+        const numbers = data.map((r: { document_number: string }) => r.document_number).filter(Boolean)
+        setDocumentNumbers(Array.from(new Set(numbers)))
+      }
+    })()
+  }, [])
+
   // Filter records to the selected month/year
   const monthlyRecords = useMemo(() => {
     return records.filter((r) => {
@@ -149,7 +167,8 @@ export function AccountingPage() {
     return monthlyRecords.filter(
       (r) =>
         r.product_name.toLowerCase().includes(q) ||
-        r.sku.toLowerCase().includes(q)
+        r.sku.toLowerCase().includes(q) ||
+        (r.document_number ?? "").toLowerCase().includes(q)
     )
   }, [monthlyRecords, search])
 
@@ -205,6 +224,7 @@ export function AccountingPage() {
     setFormQty("1")
     setFormCost("")
     setFormSelling("")
+    setFormDocNumber("")
   }
 
   function populateForm(record: FinanceRecord) {
@@ -214,6 +234,7 @@ export function AccountingPage() {
     setFormQty(String(record.quantity))
     setFormCost(String(record.cost_price))
     setFormSelling(String(record.selling_price))
+    setFormDocNumber(record.document_number ?? "")
   }
 
   function openAddForm() {
@@ -236,6 +257,7 @@ export function AccountingPage() {
     const qty = parseInt(formQty, 10)
     const cost = parseFloat(formCost)
     const selling = parseFloat(formSelling)
+    const docNumber = formDocNumber.trim()
 
     if (!sku) { toast.error("SKU is required"); return }
     if (!name) { toast.error("Product name is required"); return }
@@ -255,6 +277,7 @@ export function AccountingPage() {
           quantity: qty,
           cost_price: cost,
           selling_price: selling,
+          document_number: docNumber || null,
         })
         .eq("id", editTarget.id)
 
@@ -273,6 +296,7 @@ export function AccountingPage() {
         quantity: qty,
         cost_price: cost,
         selling_price: selling,
+        document_number: docNumber || null,
       })
 
       if (error) {
@@ -478,7 +502,7 @@ export function AccountingPage() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search by product name or SKU…"
+            placeholder="Search by product name, SKU, or document number…"
             className="pl-9 bg-background"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -518,6 +542,7 @@ export function AccountingPage() {
                   <th className="h-11 px-4 text-left font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">Date</th>
                   <th className="h-11 px-4 text-left font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">SKU</th>
                   <th className="h-11 px-4 text-left font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">Product</th>
+                  <th className="h-11 px-4 text-left font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">Doc Number</th>
                   <th className="h-11 px-4 text-right font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">Qty</th>
                   <th className="h-11 px-4 text-right font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">Cost Price</th>
                   <th className="h-11 px-4 text-right font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">Selling Price</th>
@@ -547,6 +572,9 @@ export function AccountingPage() {
                       </td>
                       <td className="px-4 py-3 font-medium max-w-[240px] truncate">
                         {r.product_name}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-muted-foreground">
+                        {r.document_number ?? "—"}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold tabular-nums whitespace-nowrap">
                         {r.quantity}
@@ -594,7 +622,7 @@ export function AccountingPage() {
               {/* Totals footer row */}
               <tfoot>
                 <tr className="border-t-2 border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 font-bold dark:from-emerald-950/50 dark:to-teal-950/50 dark:border-emerald-800">
-                  <td colSpan={3} className="px-4 py-3 text-emerald-800 dark:text-emerald-200">
+                  <td colSpan={4} className="px-4 py-3 text-emerald-800 dark:text-emerald-200">
                     Totals ({kpis.recordCount} records)
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums text-emerald-800 dark:text-emerald-200">
@@ -659,6 +687,11 @@ export function AccountingPage() {
               value={formName}
               onChange={setFormName}
               suggestions={inventoryNames}
+            />
+            <DocumentNumberAutocomplete
+              value={formDocNumber}
+              onChange={setFormDocNumber}
+              suggestions={documentNumbers}
             />
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">

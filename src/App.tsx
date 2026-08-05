@@ -9,6 +9,7 @@ import { SettingsPage } from "@/pages/settings"
 import { LoginPage } from "@/pages/login"
 import { AccountingPage } from "@/pages/accounting"
 import { InternalStockPage } from "@/pages/internal-stock"
+import { DocumentsPage } from "@/pages/documents"
 
 export function App() {
   return (
@@ -21,6 +22,7 @@ export function App() {
           <Route path="products" element={<ProductsPage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="orders" element={<OrdersPage />} />
+          <Route path="documents" element={<DocumentsPage />} />
           <Route path="accounting" element={<AccountingPage />} />
           <Route path="internal-stock" element={<InternalStockPage />} />
           <Route path="settings" element={<SettingsPage />} />

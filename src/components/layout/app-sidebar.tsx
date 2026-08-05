@@ -8,6 +8,7 @@ import {
   Zap,
   Calculator,
   Boxes,
+  FileText,
 } from "lucide-react"
 import {
   Sidebar,
@@ -51,6 +52,11 @@ const navItems = [
     title: "Orders",
     url: "/orders",
     icon: ShoppingCart,
+  },
+  {
+    title: "Documents",
+    url: "/documents",
+    icon: FileText,
   },
   {
     title: "Accounting",
