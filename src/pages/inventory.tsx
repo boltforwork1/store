@@ -17,6 +17,7 @@ import {
 import { supabase } from "@/lib/supabase"
 import { fetchNoonStock, updateNoonStock, syncNoonInventory, syncNoonPricing } from "@/lib/noon"
 import { cn } from "@/lib/utils"
+import { useLanguage } from "@/components/language-provider"
 
 type InventoryRow = {
   id: string
@@ -35,13 +36,14 @@ type LookupResult = {
   message?: string
 }
 
-function getStockLevel(qty: number) {
-  if (qty === 0) return { label: "Out of Stock", color: "text-red-600 dark:text-red-400" }
-  if (qty < 10) return { label: "Low Stock", color: "text-amber-600 dark:text-amber-400" }
-  return { label: "In Stock", color: "text-emerald-600 dark:text-emerald-400" }
+function getStockLevel(qty: number, t: (en: string, ar: string) => string) {
+  if (qty === 0) return { label: t("Out of Stock", "نفد من المخزون"), color: "text-red-600 dark:text-red-400" }
+  if (qty < 10) return { label: t("Low Stock", "مخزون منخفض"), color: "text-amber-600 dark:text-amber-400" }
+  return { label: t("In Stock", "متوفر في المخزون"), color: "text-emerald-600 dark:text-emerald-400" }
 }
 
 export function InventoryPage() {
+  const { t } = useLanguage()
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<InventoryRow[]>([])
 
@@ -93,17 +95,17 @@ export function InventoryPage() {
     const partnerSku = lookupSku.trim()
 
     if (!warehouseCode) {
-      toast.error("Warehouse code is required")
+      toast.error(t("Warehouse code is required", "كود المستودع مطلوب"))
       return
     }
     if (!partnerSku) {
-      toast.error("Partner SKU is required")
+      toast.error(t("Partner SKU is required", "رمز SKU للشريك مطلوب"))
       return
     }
 
     setLookingUp(true)
     setLookupResult(null)
-    const toastId = toast.loading("Fetching stock from Noon…")
+    const toastId = toast.loading(t("Fetching stock from Noon…", "جارٍ جلب المخزون من نون…"))
 
     try {
       const result = await fetchNoonStock([
@@ -116,7 +118,7 @@ export function InventoryPage() {
       const responseItems = data.items ?? []
 
       if (responseItems.length === 0) {
-        toast.error("No stock data returned for that SKU", { id: toastId })
+        toast.error(t("No stock data returned for that SKU", "لا توجد بيانات مخزون لهذا الرمز"), { id: toastId })
         return
       }
 
@@ -133,9 +135,9 @@ export function InventoryPage() {
       setNewQty(String(res.qty))
 
       if (res.status_code === "OK") {
-        toast.success(`Found ${res.qty} units for ${partnerSku}`, { id: toastId })
+        toast.success(t(`Found ${res.qty} units for ${partnerSku}`, `تم العثور على ${res.qty} وحدة لـ ${partnerSku}`), { id: toastId })
       } else {
-        toast.warning(res.message ?? `Lookup returned status: ${res.status_code}`, { id: toastId })
+        toast.warning(res.message ?? t(`Lookup returned status: ${res.status_code}`, `أعاد البحث الحالة: ${res.status_code}`), { id: toastId })
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error"
@@ -152,12 +154,12 @@ export function InventoryPage() {
 
     const qtyNum = Number(newQty)
     if (!Number.isFinite(qtyNum) || qtyNum < 0) {
-      toast.error("Quantity must be a non-negative number")
+      toast.error(t("Quantity must be a non-negative number", "يجب أن تكون الكمية رقمًا غير سالب"))
       return
     }
 
     setUpdating(true)
-    const toastId = toast.loading("Updating stock on Noon…")
+    const toastId = toast.loading(t("Updating stock on Noon…", "جارٍ تحديث المخزون على نون…"))
 
     try {
       const result = await updateNoonStock([
@@ -177,12 +179,12 @@ export function InventoryPage() {
       )
 
       if (allOk) {
-        toast.success(`Stock updated to ${qtyNum} for ${lookupResult.partner_sku}`, { id: toastId })
+        toast.success(t(`Stock updated to ${qtyNum} for ${lookupResult.partner_sku}`, `تم تحديث المخزون إلى ${qtyNum} لـ ${lookupResult.partner_sku}`), { id: toastId })
         setLookupResult((prev) => prev ? { ...prev, qty: qtyNum, status_code: "OK" } : prev)
         await load()
       } else {
         const failed = responseItems.find((it) => it.status?.status_code !== "OK")
-        const detail = failed?.status?.message ?? "Noon did not accept the update"
+        const detail = failed?.status?.message ?? t("Noon did not accept the update", "لم يقبل نون التحديث")
         toast.error(detail, { id: toastId })
       }
     } catch (err) {
@@ -205,25 +207,25 @@ export function InventoryPage() {
 
     const countryCode = syncCountry.trim().toLowerCase()
     if (!countryCode) {
-      toast.error("Country code is required")
+      toast.error(t("Country code is required", "كود الدولة مطلوب"))
       return
     }
 
     setSyncingPrices(true)
-    const toastId = toast.loading(`Syncing prices from Noon for country ${countryCode.toUpperCase()}…`)
+    const toastId = toast.loading(t(`Syncing prices from Noon for country ${countryCode.toUpperCase()}…`, `جارٍ مزامنة الأسعار من نون للدولة ${countryCode.toUpperCase()}…`))
 
     try {
       const result = await syncNoonPricing({ country_code: countryCode })
 
       if (!result.ok) {
-        toast.error(result.error ?? "Failed to sync prices", { id: toastId })
+        toast.error(result.error ?? t("Failed to sync prices", "فشل في مزامنة الأسعار"), { id: toastId })
         return
       }
 
       const total = result.total_products ?? 0
       const synced = result.synced ?? 0
       toast.success(
-        `Successfully synced prices for ${total} products (${synced} prices retrieved from Noon)`,
+        t(`Successfully synced prices for ${total} products (${synced} prices retrieved from Noon)`, `تمت مزامنة الأسعار لـ ${total} منتج (${synced} سعر تم استرجاعه من نون)`),
         { id: toastId }
       )
       await load()
@@ -240,25 +242,25 @@ export function InventoryPage() {
 
     const warehouseCode = syncWarehouse.trim()
     if (!warehouseCode) {
-      toast.error("Warehouse code is required")
+      toast.error(t("Warehouse code is required", "كود المستودع مطلوب"))
       return
     }
 
     setSyncing(true)
-    const toastId = toast.loading(`Syncing inventory from Noon for warehouse ${warehouseCode}…`)
+    const toastId = toast.loading(t(`Syncing inventory from Noon for warehouse ${warehouseCode}…`, `جارٍ مزامنة المخزون من نون للمستودع ${warehouseCode}…`))
 
     try {
       const result = await syncNoonInventory({ warehouse_code: warehouseCode })
 
       if (!result.ok) {
-        toast.error(result.error ?? "Failed to sync inventory", { id: toastId })
+        toast.error(result.error ?? t("Failed to sync inventory", "فشل في مزامنة المخزون"), { id: toastId })
         return
       }
 
       const total = result.total_products ?? 0
       const synced = result.synced ?? 0
       toast.success(
-        `Successfully synced inventory for ${total} products (${synced} stock levels retrieved from Noon)`,
+        t(`Successfully synced inventory for ${total} products (${synced} stock levels retrieved from Noon)`, `تمت مزامنة المخزون لـ ${total} منتج (${synced} مستوى مخزون تم استرجاعه من نون)`),
         { id: toastId }
       )
       setSyncWarehouse("")
@@ -295,15 +297,15 @@ export function InventoryPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Inventory Management</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{t("Inventory Management", "إدارة المخزون")}</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Real-time stock levels across all warehouses
+            {t("Real-time stock levels across all warehouses", "مستويات المخزون في الوقت الفعلي عبر جميع المستودعات")}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
             <RefreshCw className="size-3.5" />
-            Refresh
+            {t("Refresh", "تحديث")}
           </Button>
         </div>
       </div>
@@ -317,8 +319,8 @@ export function InventoryPage() {
                 <Package2 className="size-4 text-muted-foreground" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="text-sm">Total SKUs</CardTitle>
-                <CardDescription className="text-xs">Synced products</CardDescription>
+                <CardTitle className="text-sm">{t("Total SKUs", "إجمالي رموز SKU")}</CardTitle>
+                <CardDescription className="text-xs">{t("Synced products", "المنتجات المتزامنة")}</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -333,8 +335,8 @@ export function InventoryPage() {
                 <Warehouse className="size-4 text-muted-foreground" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="text-sm">In Stock</CardTitle>
-                <CardDescription className="text-xs">Available for sale</CardDescription>
+                <CardTitle className="text-sm">{t("In Stock", "متوفر في المخزون")}</CardTitle>
+                <CardDescription className="text-xs">{t("Available for sale", "متاح للبيع")}</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -349,8 +351,8 @@ export function InventoryPage() {
                 <Package2 className="size-4 text-muted-foreground" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="text-sm">Out of Stock</CardTitle>
-                <CardDescription className="text-xs">Requires attention</CardDescription>
+                <CardTitle className="text-sm">{t("Out of Stock", "نفد من المخزون")}</CardTitle>
+                <CardDescription className="text-xs">{t("Requires attention", "يتطلب الانتباه")}</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -365,8 +367,8 @@ export function InventoryPage() {
                 <Warehouse className="size-4 text-muted-foreground" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="text-sm">Total Units</CardTitle>
-                <CardDescription className="text-xs">Across all SKUs</CardDescription>
+                <CardTitle className="text-sm">{t("Total Units", "إجمالي الوحدات")}</CardTitle>
+                <CardDescription className="text-xs">{t("Across all SKUs", "عبر جميع رموز SKU")}</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -381,21 +383,19 @@ export function InventoryPage() {
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <DatabaseZap className="size-4 text-muted-foreground" />
-            Noon Inventory Sync
+            {t("Noon Inventory Sync", "مزامنة مخزون نون")}
           </CardTitle>
           <CardDescription>
-            Pull real-time stock quantities from Noon for all your products at once. Enter the
-            warehouse code (e.g. W00210108EG) and click Sync — every SKU will be updated with its
-            live quantity and in-stock status.
+            {t("Pull real-time stock quantities from Noon for all your products at once. Enter the warehouse code (e.g. W00210108EG) and click Sync — every SKU will be updated with its live quantity and in-stock status.", "اسحب كميات المخزون في الوقت الفعلي من نون لجميع منتجاتك دفعة واحدة. أدخل كود المستودع (مثال W00210108EG) واضغط مزامنة — سيتم تحديث كل رمز SKU بكميته المباشرة وحالة التوفر.")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSyncInventory} className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1 space-y-2">
-              <Label htmlFor="sync-warehouse">Warehouse code</Label>
+              <Label htmlFor="sync-warehouse">{t("Warehouse code", "كود المستودع")}</Label>
               <Input
                 id="sync-warehouse"
-                placeholder="e.g. W00210108EG"
+                placeholder={t("e.g. W00210108EG", "مثال W00210108EG")}
                 value={syncWarehouse}
                 onChange={(e) => setSyncWarehouse(e.target.value)}
                 disabled={syncing}
@@ -407,12 +407,12 @@ export function InventoryPage() {
               {syncing ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin" />
-                  Syncing…
+                  {t("Syncing…", "جارٍ المزامنة…")}
                 </>
               ) : (
                 <>
                   <RefreshCw className="size-3.5" />
-                  Sync Inventory
+                  {t("Sync Inventory", "مزامنة المخزون")}
                 </>
               )}
             </Button>
@@ -425,21 +425,19 @@ export function InventoryPage() {
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <Tags className="size-4 text-muted-foreground" />
-            Noon Pricing Sync
+            {t("Noon Pricing Sync", "مزامنة أسعار نون")}
           </CardTitle>
           <CardDescription>
-            Pull live prices from Noon for all your products at once. Enter the country code
-            (e.g. eg, sa, ae) and click Sync Prices — every SKU will be updated with its
-            current selling price from Noon.
+            {t("Pull live prices from Noon for all your products at once. Enter the country code (e.g. eg, sa, ae) and click Sync Prices — every SKU will be updated with its current selling price from Noon.", "اسحب الأسعار المباشرة من نون لجميع منتجاتك دفعة واحدة. أدخل كود الدولة (مثال eg, sa, ae) واضغط مزامنة الأسعار — سيتم تحديث كل رمز SKU بسعر البيع الحالي من نون.")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSyncPricing} className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1 space-y-2">
-              <Label htmlFor="sync-country">Country code</Label>
+              <Label htmlFor="sync-country">{t("Country code", "كود الدولة")}</Label>
               <Input
                 id="sync-country"
-                placeholder="e.g. eg"
+                placeholder={t("e.g. eg", "مثال eg")}
                 value={syncCountry}
                 onChange={(e) => setSyncCountry(e.target.value)}
                 disabled={syncingPrices}
@@ -451,12 +449,12 @@ export function InventoryPage() {
               {syncingPrices ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin" />
-                  Syncing…
+                  {t("Syncing…", "جارٍ المزامنة…")}
                 </>
               ) : (
                 <>
                   <RefreshCw className="size-3.5" />
-                  Sync Prices
+                  {t("Sync Prices", "مزامنة الأسعار")}
                 </>
               )}
             </Button>
@@ -469,19 +467,19 @@ export function InventoryPage() {
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <PackageSearch className="size-4 text-muted-foreground" />
-            Stock Lookup
+            {t("Stock Lookup", "البحث في المخزون")}
           </CardTitle>
           <CardDescription>
-            Enter a warehouse code and SKU to fetch the live stock level from Noon, then update it inline.
+            {t("Enter a warehouse code and SKU to fetch the live stock level from Noon, then update it inline.", "أدخل كود المستودع ورمز SKU لجلب مستوى المخزون المباشر من نون، ثم قم بتحديثه مباشرة.")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <form onSubmit={handleLookup} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
             <div className="space-y-2">
-              <Label htmlFor="lookup-warehouse">Warehouse code</Label>
+              <Label htmlFor="lookup-warehouse">{t("Warehouse code", "كود المستودع")}</Label>
               <Input
                 id="lookup-warehouse"
-                placeholder="e.g. DXB-W01"
+                placeholder={t("e.g. DXB-W01", "مثال DXB-W01")}
                 value={lookupWarehouse}
                 onChange={(e) => setLookupWarehouse(e.target.value)}
                 disabled={lookingUp}
@@ -489,10 +487,10 @@ export function InventoryPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lookup-sku">Partner SKU</Label>
+              <Label htmlFor="lookup-sku">{t("Partner SKU", "رمز SKU للشريك")}</Label>
               <Input
                 id="lookup-sku"
-                placeholder="e.g. SKU-12345"
+                placeholder={t("e.g. SKU-12345", "مثال SKU-12345")}
                 value={lookupSku}
                 onChange={(e) => setLookupSku(e.target.value)}
                 disabled={lookingUp}
@@ -503,12 +501,12 @@ export function InventoryPage() {
               {lookingUp ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin" />
-                  Searching…
+                  {t("Searching…", "جارٍ البحث…")}
                 </>
               ) : (
                 <>
                   <Search className="size-3.5" />
-                  Lookup
+                  {t("Lookup", "بحث")}
                 </>
               )}
             </Button>
@@ -533,25 +531,25 @@ export function InventoryPage() {
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Warehouse: <span className="font-mono">{lookupResult.warehouse_code}</span>
-                    {" · "}Current qty: <span className="font-semibold tabular-nums">{lookupResult.qty}</span>
+                    {t("Warehouse", "المستودع")}: <span className="font-mono">{lookupResult.warehouse_code}</span>
+                    {" · "}{t("Current qty", "الكمية الحالية")}: <span className="font-semibold tabular-nums">{lookupResult.qty}</span>
                   </p>
                 </div>
                 <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" onClick={clearLookup}>
                   <X className="size-3" />
-                  Clear
+                  {t("Clear", "مسح")}
                 </Button>
               </div>
 
               <form onSubmit={handleQuickUpdate} className="mt-4 flex flex-wrap items-end gap-3">
                 <div className="space-y-2">
-                  <Label htmlFor="new-qty" className="text-xs">New quantity</Label>
+                  <Label htmlFor="new-qty" className="text-xs">{t("New quantity", "الكمية الجديدة")}</Label>
                   <Input
                     id="new-qty"
                     type="number"
                     min={0}
                     step={1}
-                    placeholder="e.g. 50"
+                    placeholder={t("e.g. 50", "مثال 50")}
                     value={newQty}
                     onChange={(e) => setNewQty(e.target.value)}
                     disabled={updating}
@@ -563,12 +561,12 @@ export function InventoryPage() {
                   {updating ? (
                     <>
                       <Loader2 className="size-3.5 animate-spin" />
-                      Updating…
+                      {t("Updating…", "جارٍ التحديث…")}
                     </>
                   ) : (
                     <>
                       <Check className="size-3.5" />
-                      Quick Update
+                      {t("Quick Update", "تحديث سريع")}
                     </>
                   )}
                 </Button>
@@ -583,46 +581,46 @@ export function InventoryPage() {
         <Card className="flex flex-col items-center justify-center py-16 text-center">
           <CardContent className="space-y-2">
             <PackageSearch className="mx-auto size-10 text-muted-foreground/40" />
-            <p className="text-sm font-medium">No products yet</p>
+            <p className="text-sm font-medium">{t("No products yet", "لا توجد منتجات بعد")}</p>
             <p className="text-xs text-muted-foreground">
-              Sync with the Noon catalog to populate your inventory list.
+              {t("Sync with the Noon catalog to populate your inventory list.", "قم بالمزامنة مع كتالوج نون لتعبئة قائمة المخزون الخاصة بك.")}
             </p>
           </CardContent>
         </Card>
       ) : (
         <Card>
           <CardHeader className="pb-4">
-            <CardTitle className="text-base">Stock Levels</CardTitle>
-            <CardDescription>All SKUs with last-synced inventory</CardDescription>
+            <CardTitle className="text-base">{t("Stock Levels", "مستويات المخزون")}</CardTitle>
+            <CardDescription>{t("All SKUs with last-synced inventory", "جميع رموز SKU مع آخر مخزون متزامن")}</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="pl-6">SKU</TableHead>
-                  <TableHead>Product</TableHead>
-                  <TableHead className="text-right">Qty</TableHead>
-                  <TableHead className="text-right">Price</TableHead>
-                  <TableHead className="pr-6">Status</TableHead>
+                  <TableHead className="ps-6 text-start">{t("SKU", "رمز SKU")}</TableHead>
+                  <TableHead className="text-start">{t("Product", "المنتج")}</TableHead>
+                  <TableHead className="text-end">{t("Qty", "الكمية")}</TableHead>
+                  <TableHead className="text-end">{t("Price", "السعر")}</TableHead>
+                  <TableHead className="pe-6 text-start">{t("Status", "الحالة")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.map((item) => {
                   const qty = item.stock_qty ?? 0
-                  const level = getStockLevel(qty)
+                  const level = getStockLevel(qty, t)
                   return (
                     <TableRow key={item.id} className="hover:bg-muted/30">
-                      <TableCell className="pl-6 font-mono text-xs text-muted-foreground">
+                      <TableCell className="ps-6 font-mono text-xs text-muted-foreground text-start">
                         {item.partner_sku}
                       </TableCell>
-                      <TableCell className="font-medium max-w-[260px] truncate">
+                      <TableCell className="font-medium max-w-[260px] truncate text-start">
                         {item.name ?? item.partner_sku}
                       </TableCell>
-                      <TableCell className="text-right font-semibold tabular-nums">{qty}</TableCell>
-                      <TableCell className="text-right font-medium tabular-nums">
-                        {item.price != null ? `$${Number(item.price).toFixed(2)}` : "—"}
+                      <TableCell className="text-end font-semibold tabular-nums">{qty}</TableCell>
+                      <TableCell className="text-end font-medium tabular-nums">
+                        {item.price != null ? `${Number(item.price).toFixed(2)}` : "—"}
                       </TableCell>
-                      <TableCell className="pr-6">
+                      <TableCell className="pe-6 text-start">
                         <span className={cn("text-xs font-medium", level.color)}>
                           {level.label}
                         </span>
