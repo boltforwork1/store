@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label"
 import { supabase } from "@/lib/supabase"
 import { importCatalogFromFile, syncNoonCatalog, syncNoonCatalogSingle } from "@/lib/noon"
 import type { Product } from "@/lib/types"
+import { useLanguage } from "@/components/language-provider"
 
 type DisplayProduct = {
   id: string
@@ -66,6 +67,7 @@ function toDisplayProduct(row: Product): DisplayProduct {
 }
 
 export function ProductsPage() {
+  const { t, lang } = useLanguage()
   const [products, setProducts] = useState<DisplayProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [importing, setImporting] = useState(false)
@@ -336,15 +338,15 @@ export function ProductsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Product Catalog</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{t("Product Catalog", "كتالوج المنتجات")}</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {loading ? "Loading products…" : `${products.length} products across all categories`}
+            {loading ? t("Loading products…", "جارٍ تحميل المنتجات…") : `${products.length} ${t("products across all categories", "المنتجات عبر جميع الفئات")}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1.5">
             <Filter className="size-3.5" />
-            Filter
+            {t("Filter", "تصفية")}
           </Button>
           <Button
             variant="outline"
@@ -358,7 +360,7 @@ export function ProductsPage() {
             ) : (
               <Upload className="size-3.5" />
             )}
-            {importing ? "Importing…" : "Import CSV"}
+            {importing ? t("Importing…", "جارٍ الاستيراد…") : t("Import CSV", "استيراد CSV")}
           </Button>
           <Button
             variant="outline"
@@ -372,7 +374,7 @@ export function ProductsPage() {
             ) : (
               <RefreshCw className="size-3.5" />
             )}
-            {syncing ? "Syncing…" : "Sync Catalog"}
+            {syncing ? t("Syncing…", "جارٍ المزامنة…") : t("Sync Catalog", "مزامنة الكتالوج")}
           </Button>
           <Button
             size="sm"
@@ -381,7 +383,7 @@ export function ProductsPage() {
             disabled={adding || deleting}
           >
             <Plus className="size-3.5" />
-            Add Product
+            {t("Add Product", "إضافة منتج")}
           </Button>
         </div>
       </div>
@@ -437,14 +439,16 @@ export function ProductsPage() {
           <div className="space-y-1">
             <p className="text-sm font-medium">
               {importing
-                ? "Importing your catalog…"
+                ? t("Importing your catalog…", "جارٍ استيراد الكتالوج…")
                 : dragging
-                  ? "Drop your file to import"
-                  : "Drag & drop your catalog CSV here"}
+                  ? t("Drop your file to import", "أفلت الملف للاستيراد")
+                  : t("Drag & drop your catalog CSV here", "اسحب وأفلت ملف CSV للكتالوج هنا")}
             </p>
             <p className="text-xs text-muted-foreground max-w-md">
-              Export your catalog from the Noon Partner Portal (CSV) and upload
-              the file here to sync your products.
+              {t(
+                "Export your catalog from the Noon Partner Portal (CSV) and upload the file here to sync your products.",
+                "قم بتصدير الكتالوج الخاص بك من بوابة شركاء نون (CSV) وارفع الملف هنا لمزامنة منتجاتك."
+              )}
             </p>
           </div>
           {!importing && !syncing && (
@@ -458,7 +462,7 @@ export function ProductsPage() {
               }}
             >
               <Upload className="size-3.5" />
-              Choose file
+              {t("Choose file", "اختر ملف")}
             </Button>
           )}
         </div>
@@ -466,18 +470,18 @@ export function ProductsPage() {
 
       {/* Search */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className={cn("absolute top-1/2 size-4 -translate-y-1/2 text-muted-foreground", lang === "ar" ? "right-3" : "left-3")} />
         <Input
-          placeholder="Search by name or SKU…"
-          className="pl-9 bg-background"
+          placeholder={t("Search by name or SKU…", "البحث بالاسم أو رمز SKU…")}
+          className={cn("bg-background", lang === "ar" ? "pr-9 text-right" : "pl-9")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         {search && (
           <button
             onClick={() => setSearch("")}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            aria-label="Clear search"
+            className={cn("absolute top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground", lang === "ar" ? "left-3" : "right-3")}
+            aria-label={t("Clear search", "مسح البحث")}
           >
             <X className="size-4" />
           </button>
@@ -507,12 +511,12 @@ export function ProductsPage() {
           <CardContent className="space-y-2">
             <Package className="mx-auto size-10 text-muted-foreground/40" />
             <p className="text-sm font-medium">
-              {products.length === 0 ? "No products yet" : "No matching products"}
+              {products.length === 0 ? t("No products yet", "لا توجد منتجات بعد") : t("No matching products", "لا توجد منتجات مطابقة")}
             </p>
             <p className="text-xs text-muted-foreground">
               {products.length === 0
-                ? "Import a CSV from the Noon Partner Portal to populate your catalog."
-                : "Try a different search term."}
+                ? t("Import a CSV from the Noon Partner Portal to populate your catalog.", "استورد ملف CSV من بوابة شركاء نون لتعبئة كتالوجك.")
+                : t("Try a different search term.", "جرب كلمة بحث مختلفة.")}
             </p>
           </CardContent>
         </Card>
@@ -585,25 +589,29 @@ export function ProductsPage() {
                       STATUS_STYLES[product.status]
                     )}
                   >
-                    {product.status}
+                    {product.status === "Active" ? t("Active", "نشط")
+                      : product.status === "Low Stock" ? t("Low Stock", "مخزون منخفض")
+                      : product.status === "Out of Stock" ? t("Out of Stock", "غير متوفر")
+                      : product.status === "Discontinued" ? t("Discontinued", "متوقف")
+                      : product.status}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-lg font-bold">{product.price}</span>
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {product.stock > 0 ? `${product.stock} in stock` : "No stock"}
+                    {product.stock > 0 ? `${product.stock} ${t("in stock", "متوفر")}` : t("No stock", "غير متوفر")}
                   </span>
                 </div>
 
                 {product.needsSync && (
                   <div className="mt-3 pt-3 border-t">
                     <p className="text-xs text-muted-foreground mb-1.5">
-                      Missing details? Enter the Noon SKU to fetch name & image.
+                      {t("Missing details? Enter the Noon SKU to fetch name & image.", "تفاصيل مفقودة؟ أدخل رمز SKU الخاص بنون لجلب الاسم والصورة.")}
                     </p>
                     <div className="flex gap-1.5">
                       <Input
-                        placeholder="Noon SKU (e.g. Z3A…)"
-                        className="h-8 text-xs"
+                        placeholder={t("Noon SKU (e.g. Z3A…)", "رمز SKU نون (مثال …Z3A)")}
+                        className={cn("h-8 text-xs", lang === "ar" && "text-right")}
                         value={syncSkuInputs[product.id] ?? ""}
                         onChange={(e) =>
                           setSyncSkuInputs((prev) => ({
@@ -631,7 +639,7 @@ export function ProductsPage() {
                         ) : (
                           <RefreshCw className="size-3" />
                         )}
-                        {syncingSku === product.id ? "Syncing" : "Sync"}
+                        {syncingSku === product.id ? t("Syncing", "جارٍ المزامنة") : t("Sync", "مزامنة")}
                       </Button>
                     </div>
                   </div>
@@ -648,22 +656,22 @@ export function ProductsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Product</DialogTitle>
+            <DialogTitle>{t("Edit Product", "تعديل المنتج")}</DialogTitle>
             <DialogDescription>
-              Update the product name. This only changes your local catalog and does not contact Noon.
+              {t("Update the product name. This only changes your local catalog and does not contact Noon.", "قم بتحديث اسم المنتج. هذا يغير كتالوجك المحلي فقط ولا يتصل بنون.")}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleEditProduct} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-product-name">Product Name</Label>
+              <Label htmlFor="edit-product-name">{t("Product Name", "اسم المنتج")}</Label>
               <Input
                 id="edit-product-name"
-                placeholder="Enter product name"
+                placeholder={t("Enter product name", "أدخل اسم المنتج")}
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
                 autoFocus
               />
-              <p className="text-xs text-muted-foreground font-mono">SKU: {editTarget?.id}</p>
+              <p className="text-xs text-muted-foreground font-mono">{t("SKU", "رمز SKU")}: {editTarget?.id}</p>
             </div>
             <DialogFooter>
               <Button
@@ -672,11 +680,11 @@ export function ProductsPage() {
                 onClick={() => { setEditTarget(null); setEditName("") }}
                 disabled={savingEdit}
               >
-                Cancel
+                {t("Cancel", "إلغاء")}
               </Button>
               <Button type="submit" disabled={savingEdit}>
                 {savingEdit ? <Loader2 className="size-4 animate-spin" /> : null}
-                {savingEdit ? "Saving…" : "Save Changes"}
+                {savingEdit ? t("Saving…", "جارٍ الحفظ…") : t("Save Changes", "حفظ التغييرات")}
               </Button>
             </DialogFooter>
           </form>
@@ -687,17 +695,17 @@ export function ProductsPage() {
       <Dialog open={addOpen} onOpenChange={(open) => { if (!adding) setAddOpen(open) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Product</DialogTitle>
+            <DialogTitle>{t("Add Product", "إضافة منتج")}</DialogTitle>
             <DialogDescription>
-              Add a new product to your catalog. You can sync its details from Noon later.
+              {t("Add a new product to your catalog. You can sync its details from Noon later.", "أضف منتجاً جديداً إلى كتالوجك. يمكنك مزامنة تفاصيله من نون لاحقاً.")}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAddProduct} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="partner-sku">Partner SKU <span className="text-destructive">*</span></Label>
+              <Label htmlFor="partner-sku">{t("Partner SKU", "رمز SKU للشريك")} <span className="text-destructive">*</span></Label>
               <Input
                 id="partner-sku"
-                placeholder="e.g. NOON-SKU-12345"
+                placeholder={t("e.g. NOON-SKU-12345", "مثال NOON-SKU-12345")}
                 value={addSku}
                 onChange={(e) => setAddSku(e.target.value)}
                 required
@@ -705,10 +713,10 @@ export function ProductsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="product-name">Product Name</Label>
+              <Label htmlFor="product-name">{t("Product Name", "اسم المنتج")}</Label>
               <Input
                 id="product-name"
-                placeholder="Optional — will be fetched from Noon on sync"
+                placeholder={t("Optional — will be fetched from Noon on sync", "اختياري — سيتم جلبه من نون عند المزامنة")}
                 value={addName}
                 onChange={(e) => setAddName(e.target.value)}
               />
@@ -720,11 +728,11 @@ export function ProductsPage() {
                 onClick={() => setAddOpen(false)}
                 disabled={adding}
               >
-                Cancel
+                {t("Cancel", "إلغاء")}
               </Button>
               <Button type="submit" disabled={adding}>
                 {adding ? <Loader2 className="size-4 animate-spin" /> : null}
-                {adding ? "Adding…" : "Add Product"}
+                {adding ? t("Adding…", "جارٍ الإضافة…") : t("Add Product", "إضافة منتج")}
               </Button>
             </DialogFooter>
           </form>
@@ -738,21 +746,21 @@ export function ProductsPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete product?</AlertDialogTitle>
+            <AlertDialogTitle>{t("Delete product?", "حذف المنتج؟")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove <span className="font-medium text-foreground">{deleteTarget?.name}</span>
-              (SKU: {deleteTarget?.id}) from your catalog. This action cannot be undone.
+              {t("This will permanently remove", "سيؤدي هذا إلى إزالة")} <span className="font-medium text-foreground">{deleteTarget?.name}</span>
+              {t("(SKU: ", "(رمز SKU: ")}{deleteTarget?.id}) {t("from your catalog. This action cannot be undone.", "من كتالوجك. لا يمكن التراجع عن هذا الإجراء.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("Cancel", "إلغاء")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => { e.preventDefault(); handleDeleteProduct() }}
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleting ? <Loader2 className="size-4 animate-spin" /> : null}
-              {deleting ? "Deleting…" : "Delete"}
+              {deleting ? t("Deleting…", "جارٍ الحذف…") : t("Delete", "حذف")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
