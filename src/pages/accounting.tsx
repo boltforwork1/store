@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
+import { useLanguage } from "@/components/language-provider"
 import { ProductNameAutocomplete } from "@/components/product-name-autocomplete"
 import { DocumentNumberAutocomplete } from "@/components/document-number-autocomplete"
 
@@ -56,9 +57,13 @@ type FinanceRecord = {
   created_at: string
 }
 
-const MONTH_NAMES = [
+const MONTH_NAMES_EN = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
+]
+const MONTH_NAMES_AR = [
+  "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+  "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر",
 ]
 
 function netProfit(r: { selling_price: number; cost_price: number; quantity: number }): number {
@@ -78,6 +83,7 @@ function fmt(n: number): string {
 }
 
 export function AccountingPage() {
+  const { t, lang } = useLanguage()
   const [loading, setLoading] = useState(true)
   const [records, setRecords] = useState<FinanceRecord[]>([])
   const [formOpen, setFormOpen] = useState(false)
@@ -112,7 +118,7 @@ export function AccountingPage() {
       .order("created_at", { ascending: false })
 
     if (error) {
-      toast.error("Failed to load finance records: " + error.message)
+      toast.error(t("Failed to load finance records", "فشل تحميل السجلات المالية") + ": " + error.message)
       setRecords([])
     } else {
       setRecords((data ?? []) as FinanceRecord[])
@@ -259,11 +265,11 @@ export function AccountingPage() {
     const selling = parseFloat(formSelling)
     const docNumber = formDocNumber.trim()
 
-    if (!sku) { toast.error("SKU is required"); return }
-    if (!name) { toast.error("Product name is required"); return }
-    if (!Number.isFinite(qty) || qty < 1) { toast.error("Quantity must be at least 1"); return }
-    if (!Number.isFinite(cost) || cost < 0) { toast.error("Cost price must be a valid number"); return }
-    if (!Number.isFinite(selling) || selling < 0) { toast.error("Selling price must be a valid number"); return }
+    if (!sku) { toast.error(t("SKU is required", "رمز SKU مطلوب")); return }
+    if (!name) { toast.error(t("Product name is required", "اسم المنتج مطلوب")); return }
+    if (!Number.isFinite(qty) || qty < 1) { toast.error(t("Quantity must be at least 1", "يجب أن تكون الكمية 1 على الأقل")); return }
+    if (!Number.isFinite(cost) || cost < 0) { toast.error(t("Cost price must be a valid number", "يجب أن يكون سعر التكلفة رقماً صالحاً")); return }
+    if (!Number.isFinite(selling) || selling < 0) { toast.error(t("Selling price must be a valid number", "يجب أن يكون سعر البيع رقماً صالحاً")); return }
 
     setSaving(true)
 
@@ -282,12 +288,12 @@ export function AccountingPage() {
         .eq("id", editTarget.id)
 
       if (error) {
-        toast.error("Failed to update record: " + error.message)
+        toast.error(t("Failed to update record", "فشل تحديث السجل") + ": " + error.message)
         setSaving(false)
         return
       }
 
-      toast.success("Finance record updated")
+      toast.success(t("Finance record updated", "تم تحديث السجل المالي"))
     } else {
       const { error } = await supabase.from("finance_records").insert({
         date: formDate,
@@ -300,12 +306,12 @@ export function AccountingPage() {
       })
 
       if (error) {
-        toast.error("Failed to add record: " + error.message)
+        toast.error(t("Failed to add record", "فشل إضافة السجل") + ": " + error.message)
         setSaving(false)
         return
       }
 
-      toast.success("Finance record added")
+      toast.success(t("Finance record added", "تم إضافة السجل المالي"))
     }
 
     resetForm()
@@ -325,60 +331,60 @@ export function AccountingPage() {
       .eq("id", deleteTarget.id)
 
     if (error) {
-      toast.error("Failed to delete record: " + error.message)
+      toast.error(t("Failed to delete record", "فشل حذف السجل") + ": " + error.message)
       setDeleting(false)
       return
     }
 
-    toast.success("Record deleted")
+    toast.success(t("Record deleted", "تم حذف السجل"))
     setDeleteTarget(null)
     setDeleting(false)
     await load()
   }
 
-  const monthLabel = `${MONTH_NAMES[filterMonth]} ${filterYear}`
+  const monthLabel = `${lang === "ar" ? MONTH_NAMES_AR[filterMonth] : MONTH_NAMES_EN[filterMonth]} ${filterYear}`
 
   // KPI card color schemes — lively, distinct colors per card
   const kpiCards = [
     {
-      label: "Net Profit",
+      label: t("Net Profit", "صافي الربح"),
       value: kpis.totalProfit,
       display: fmt(kpis.totalProfit),
       icon: Wallet,
       gradient: "from-emerald-500 to-teal-600",
       bg: "bg-emerald-50 dark:bg-emerald-950/40",
       text: kpis.totalProfit >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400",
-      suffix: kpis.totalProfit >= 0 ? "profit" : "loss",
+      suffix: kpis.totalProfit >= 0 ? t("profit", "ربح") : t("loss", "خسارة"),
     },
     {
-      label: "Total Revenue",
+      label: t("Total Revenue", "إجمالي الإيرادات"),
       value: kpis.totalRevenue,
       display: fmt(kpis.totalRevenue),
       icon: Coins,
       gradient: "from-blue-500 to-indigo-600",
       bg: "bg-blue-50 dark:bg-blue-950/40",
       text: "text-blue-700 dark:text-blue-300",
-      suffix: "sales",
+      suffix: t("sales", "مبيعات"),
     },
     {
-      label: "Total Cost",
+      label: t("Total Cost", "إجمالي التكلفة"),
       value: kpis.totalCost,
       display: fmt(kpis.totalCost),
       icon: Receipt,
       gradient: "from-amber-500 to-orange-600",
       bg: "bg-amber-50 dark:bg-amber-950/40",
       text: "text-amber-700 dark:text-amber-300",
-      suffix: "expenses",
+      suffix: t("expenses", "مصروفات"),
     },
     {
-      label: "Profit Margin",
+      label: t("Profit Margin", "هامش الربح"),
       value: kpis.profitMargin,
       display: `${kpis.profitMargin.toFixed(1)}%`,
       icon: kpis.profitMargin >= 0 ? TrendingUp : TrendingDown,
       gradient: kpis.profitMargin >= 0 ? "from-violet-500 to-purple-600" : "from-red-500 to-rose-600",
       bg: kpis.profitMargin >= 0 ? "bg-violet-50 dark:bg-violet-950/40" : "bg-red-50 dark:bg-red-950/40",
       text: kpis.profitMargin >= 0 ? "text-violet-700 dark:text-violet-300" : "text-red-600 dark:text-red-400",
-      suffix: kpis.profitMargin >= 0 ? "healthy" : "review",
+      suffix: kpis.profitMargin >= 0 ? t("healthy", "جيد") : t("review", "مراجعة"),
     },
   ]
 
@@ -404,15 +410,15 @@ export function AccountingPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Accounting & Finance</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{t("Accounting & Finance", "الحسابات والمالية")}</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Manual profit tracking — independent from Noon sync
+            {t("Manual profit tracking — independent from Noon sync", "تتبع الأرباح يدوياً - مستقل عن مزامنة نون")}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
             <RefreshCw className="size-3.5" />
-            Refresh
+            {t("Refresh", "تحديث")}
           </Button>
           <Button
             size="sm"
@@ -420,33 +426,33 @@ export function AccountingPage() {
             onClick={openAddForm}
           >
             <Plus className="size-3.5" />
-            Add Record
+            {t("Add Record", "إضافة سجل")}
           </Button>
         </div>
       </div>
 
-      {/* Month/Year Filter */}
+      {/* Month/Year Filter — forced LTR so arrows always point correctly */}
       <div className="flex items-center justify-center">
-        <div className="flex items-center gap-3 rounded-xl border bg-card px-4 py-2.5 shadow-sm">
+        <div className="flex items-center gap-3 rounded-xl border bg-card px-4 py-2.5 shadow-sm" dir="ltr">
           <Button
             variant="ghost"
             size="icon-sm"
             onClick={goToPrevMonth}
-            aria-label="Previous month"
+            aria-label={t("Previous month", "الشهر السابق")}
           >
             <ChevronLeft className="size-4" />
           </Button>
           <div className="flex min-w-[160px] flex-col items-center">
             <span className="text-base font-bold tracking-tight">{monthLabel}</span>
             <span className="text-xs text-muted-foreground">
-              {kpis.recordCount} record{kpis.recordCount === 1 ? "" : "s"}
+              {kpis.recordCount} {t("records", "سجلات")}
             </span>
           </div>
           <Button
             variant="ghost"
             size="icon-sm"
             onClick={goToNextMonth}
-            aria-label="Next month"
+            aria-label={t("Next month", "الشهر التالي")}
           >
             <ChevronRight className="size-4" />
           </Button>
@@ -487,11 +493,11 @@ export function AccountingPage() {
       {kpis.recordCount > 0 && (
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <span className="rounded-lg bg-emerald-100 px-3 py-1 font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-            {kpis.positiveCount} profitable
+            {kpis.positiveCount} {t("profitable", "مربح")}
           </span>
           {kpis.negativeCount > 0 && (
             <span className="rounded-lg bg-red-100 px-3 py-1 font-medium text-red-700 dark:bg-red-950 dark:text-red-300">
-              {kpis.negativeCount} at a loss
+              {kpis.negativeCount} {t("at a loss", "بخسارة")}
             </span>
           )}
         </div>
@@ -500,18 +506,18 @@ export function AccountingPage() {
       {/* Search bar */}
       {kpis.recordCount > 0 && (
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className={cn("absolute top-1/2 size-4 -translate-y-1/2 text-muted-foreground", lang === "ar" ? "right-3" : "left-3")} />
           <Input
-            placeholder="Search by product name, SKU, or document number…"
-            className="pl-9 bg-background"
+            placeholder={t("Search by product name, SKU, or document number…", "البحث باسم المنتج، SKU، أو رقم المستند…")}
+            className={cn("bg-background text-start", lang === "ar" ? "pr-9" : "pl-9")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           {search && (
             <button
               onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
+              className={cn("absolute top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground", lang === "ar" ? "left-3" : "right-3")}
+              aria-label={t("Clear search", "مسح البحث")}
             >
               <X className="size-4" />
             </button>
@@ -524,11 +530,11 @@ export function AccountingPage() {
         <Card className="flex flex-col items-center justify-center py-16 text-center">
           <CardContent className="space-y-2">
             <Wallet className="mx-auto size-10 text-muted-foreground/40" />
-            <p className="text-sm font-medium">{search ? "No matching records" : `No records for ${monthLabel}`}</p>
+            <p className="text-sm font-medium">{search ? t("No matching records", "لا توجد سجلات مطابقة") : t("No records for", "لا توجد سجلات لـ") + ` ${monthLabel}`}</p>
             <p className="text-xs text-muted-foreground max-w-sm">
               {search
-                ? "Try a different search term."
-                : 'Click "Add Record" to manually enter a sale with cost and selling prices. Net profit is calculated automatically.'}
+                ? t("Try a different search term.", "جرب كلمة بحث مختلفة.")
+                : t('Click "Add Record" to manually enter a sale with cost and selling prices. Net profit is calculated automatically.', 'انقر على "إضافة سجل" لإدخال عملية بيع يدوياً مع أسعار التكلفة والبيع. يتم حساب صافي الربح تلقائياً.')}
             </p>
           </CardContent>
         </Card>
@@ -539,15 +545,15 @@ export function AccountingPage() {
               {/* Spreadsheet-style header: soft green background */}
               <thead>
                 <tr className="bg-gradient-to-r from-emerald-100 to-teal-100 dark:from-emerald-950 dark:to-teal-950">
-                  <th className="h-11 px-4 text-left font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">Date</th>
-                  <th className="h-11 px-4 text-left font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">SKU</th>
-                  <th className="h-11 px-4 text-left font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">Product</th>
-                  <th className="h-11 px-4 text-left font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">Doc Number</th>
-                  <th className="h-11 px-4 text-right font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">Qty</th>
-                  <th className="h-11 px-4 text-right font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">Cost Price</th>
-                  <th className="h-11 px-4 text-right font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">Selling Price</th>
-                  <th className="h-11 px-4 text-right font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">Net Profit (الصافي)</th>
-                  <th className="h-11 px-4 text-center font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">Actions</th>
+                  <th className="h-11 px-4 text-start font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">{t("Date", "التاريخ")}</th>
+                  <th className="h-11 px-4 text-start font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">{t("SKU", "رمز SKU")}</th>
+                  <th className="h-11 px-4 text-start font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">{t("Product", "المنتج")}</th>
+                  <th className="h-11 px-4 text-start font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">{t("Doc Number", "رقم المستند")}</th>
+                  <th className="h-11 px-4 text-end font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">{t("Qty", "الكمية")}</th>
+                  <th className="h-11 px-4 text-end font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">{t("Cost Price", "سعر التكلفة")}</th>
+                  <th className="h-11 px-4 text-end font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">{t("Selling Price", "سعر البيع")}</th>
+                  <th className="h-11 px-4 text-end font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">{t("Net Profit", "صافي الربح")}</th>
+                  <th className="h-11 px-4 text-center font-bold text-emerald-800 dark:text-emerald-200 whitespace-nowrap">{t("Actions", "الإجراءات")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -564,29 +570,29 @@ export function AccountingPage() {
                       key={r.id}
                       className={cn("border-b border-border/50 transition-colors hover:bg-blue-100/50 dark:hover:bg-blue-900/30", rowBg)}
                     >
-                      <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                      <td className="px-4 py-3 whitespace-nowrap text-start text-muted-foreground">
                         {new Date(r.date).toLocaleDateString()}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap font-mono text-xs font-medium">
+                      <td className="px-4 py-3 whitespace-nowrap text-start font-mono text-xs font-medium">
                         {r.sku}
                       </td>
-                      <td className="px-4 py-3 font-medium max-w-[240px] truncate">
+                      <td className="px-4 py-3 text-start font-medium max-w-[240px] truncate">
                         {r.product_name}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-muted-foreground">
+                      <td className="px-4 py-3 whitespace-nowrap text-start font-mono text-xs text-muted-foreground">
                         {r.document_number ?? "—"}
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold tabular-nums whitespace-nowrap">
+                      <td className="px-4 py-3 text-end font-semibold tabular-nums whitespace-nowrap">
                         {r.quantity}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-muted-foreground whitespace-nowrap">
+                      <td className="px-4 py-3 text-end tabular-nums text-muted-foreground whitespace-nowrap">
                         {fmt(Number(r.cost_price))}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums font-medium whitespace-nowrap">
+                      <td className="px-4 py-3 text-end tabular-nums font-medium whitespace-nowrap">
                         {fmt(Number(r.selling_price))}
                       </td>
                       <td className={cn(
-                        "px-4 py-3 text-right font-extrabold tabular-nums whitespace-nowrap",
+                        "px-4 py-3 text-end font-extrabold tabular-nums whitespace-nowrap",
                         isPositive
                           ? "text-emerald-600 dark:text-emerald-400"
                           : "text-red-600 dark:text-red-400"
@@ -600,7 +606,7 @@ export function AccountingPage() {
                             size="icon-xs"
                             className="text-blue-600 hover:bg-blue-100 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-950"
                             onClick={() => openEditForm(r)}
-                            aria-label="Edit record"
+                            aria-label={t("Edit record", "تعديل السجل")}
                           >
                             <Pencil className="size-3.5" />
                           </Button>
@@ -609,7 +615,7 @@ export function AccountingPage() {
                             size="icon-xs"
                             className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             onClick={() => setDeleteTarget(r)}
-                            aria-label="Delete record"
+                            aria-label={t("Delete record", "حذف السجل")}
                           >
                             <Trash2 className="size-3.5" />
                           </Button>
@@ -622,16 +628,16 @@ export function AccountingPage() {
               {/* Totals footer row */}
               <tfoot>
                 <tr className="border-t-2 border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 font-bold dark:from-emerald-950/50 dark:to-teal-950/50 dark:border-emerald-800">
-                  <td colSpan={4} className="px-4 py-3 text-emerald-800 dark:text-emerald-200">
-                    Totals ({kpis.recordCount} records)
+                  <td colSpan={4} className="px-4 py-3 text-start text-emerald-800 dark:text-emerald-200">
+                    {t(`Totals (${kpis.recordCount} records)`, `الإجمالي (${kpis.recordCount} سجلات)`)}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-emerald-800 dark:text-emerald-200">
+                  <td className="px-4 py-3 text-end tabular-nums text-emerald-800 dark:text-emerald-200">
                     {filteredRecords.reduce((s, r) => s + r.quantity, 0)}
                   </td>
                   <td className="px-4 py-3" />
                   <td className="px-4 py-3" />
                   <td className={cn(
-                    "px-4 py-3 text-right tabular-nums",
+                    "px-4 py-3 text-end tabular-nums",
                     kpis.totalProfit >= 0
                       ? "text-emerald-700 dark:text-emerald-300"
                       : "text-red-600 dark:text-red-400"
@@ -652,18 +658,18 @@ export function AccountingPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {editTarget ? <Pencil className="size-5" /> : <Wallet className="size-5" />}
-              {editTarget ? "Edit Finance Record" : "Add Finance Record"}
+              {editTarget ? t("Edit Finance Record", "تعديل السجل المالي") : t("Add Finance Record", "إضافة سجل مالي")}
             </DialogTitle>
             <DialogDescription>
               {editTarget
-                ? "Update the sale details. Net profit recalculates automatically as (Selling Price − Cost Price) × Quantity."
-                : "Enter the sale details. Net profit is calculated automatically as (Selling Price − Cost Price) × Quantity."}
+                ? t("Update the sale details. Net profit recalculates automatically as (Selling Price − Cost Price) × Quantity.", "حدّث تفاصيل البيع. يتم إعادة حساب صافي الربح تلقائياً كـ (سعر البيع − سعر التكلفة) × الكمية.")
+                : t("Enter the sale details. Net profit is calculated automatically as (Selling Price − Cost Price) × Quantity.", "أدخل تفاصيل البيع. يتم حساب صافي الربح تلقائياً كـ (سعر البيع − سعر التكلفة) × الكمية.")}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmitRecord} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="fin-date">Date <span className="text-destructive">*</span></Label>
+                <Label htmlFor="fin-date">{t("Date", "التاريخ")} <span className="text-destructive">*</span></Label>
                 <Input
                   id="fin-date"
                   type="date"
@@ -673,10 +679,10 @@ export function AccountingPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="fin-sku">SKU <span className="text-destructive">*</span></Label>
+                <Label htmlFor="fin-sku">{t("SKU", "رمز SKU")} <span className="text-destructive">*</span></Label>
                 <Input
                   id="fin-sku"
-                  placeholder="e.g. SKU-001"
+                  placeholder={t("e.g. SKU-001", "مثال: SKU-001")}
                   value={formSku}
                   onChange={(e) => setFormSku(e.target.value)}
                   required
@@ -695,7 +701,7 @@ export function AccountingPage() {
             />
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">
-                <Label htmlFor="fin-qty">Quantity <span className="text-destructive">*</span></Label>
+                <Label htmlFor="fin-qty">{t("Quantity", "الكمية")} <span className="text-destructive">*</span></Label>
                 <Input
                   id="fin-qty"
                   type="number"
@@ -707,7 +713,7 @@ export function AccountingPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="fin-cost">Cost Price <span className="text-destructive">*</span></Label>
+                <Label htmlFor="fin-cost">{t("Cost Price", "سعر التكلفة")} <span className="text-destructive">*</span></Label>
                 <Input
                   id="fin-cost"
                   type="number"
@@ -720,7 +726,7 @@ export function AccountingPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="fin-selling">Selling Price <span className="text-destructive">*</span></Label>
+                <Label htmlFor="fin-selling">{t("Selling Price", "سعر البيع")} <span className="text-destructive">*</span></Label>
                 <Input
                   id="fin-selling"
                   type="number"
@@ -738,7 +744,7 @@ export function AccountingPage() {
             {formCost && formSelling && formQty && (
               <div className="rounded-lg border bg-muted/30 px-4 py-3">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Preview Net Profit:</span>
+                  <span className="text-muted-foreground">{t("Preview Net Profit:", "معاينة صافي الربح:")}</span>
                   {(() => {
                     const np = (parseFloat(formSelling) - parseFloat(formCost)) * parseInt(formQty, 10)
                     if (!Number.isFinite(np)) return <span className="font-semibold">—</span>
@@ -762,11 +768,11 @@ export function AccountingPage() {
                 onClick={() => { setFormOpen(false); setEditTarget(null) }}
                 disabled={saving}
               >
-                Cancel
+                {t("Cancel", "إلغاء")}
               </Button>
               <Button type="submit" disabled={saving} className="gap-1.5">
                 {saving ? <Loader2 className="size-4 animate-spin" /> : editTarget ? <Pencil className="size-4" /> : <Plus className="size-4" />}
-                {saving ? "Saving…" : editTarget ? "Save Changes" : "Add Record"}
+                {saving ? t("Saving…", "جارٍ الحفظ…") : editTarget ? t("Save Changes", "حفظ التغييرات") : t("Add Record", "إضافة سجل")}
               </Button>
             </DialogFooter>
           </form>
@@ -780,22 +786,22 @@ export function AccountingPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete finance record?</AlertDialogTitle>
+            <AlertDialogTitle>{t("Delete finance record?", "حذف السجل المالي؟")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove the record for
+              {t("This will permanently remove the record for", "سيؤدي هذا إلى حذف السجل الخاص بـ")}
               <span className="font-medium text-foreground"> {deleteTarget?.product_name}</span>
-              (SKU: {deleteTarget?.sku}). This action cannot be undone.
+              ({t("SKU", "رمز SKU")}: {deleteTarget?.sku}). {t("This action cannot be undone.", "لا يمكن التراجع عن هذا الإجراء.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("Cancel", "إلغاء")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => { e.preventDefault(); handleDeleteRecord() }}
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleting ? <Loader2 className="size-4 animate-spin" /> : null}
-              {deleting ? "Deleting…" : "Delete"}
+              {deleting ? t("Deleting…", "جارٍ الحذف…") : t("Delete", "حذف")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
