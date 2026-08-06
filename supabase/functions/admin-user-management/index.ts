@@ -46,7 +46,11 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
-const ADMIN_EMAIL = "kmg.fba@gmail.com"
+const ADMIN_EMAILS = ["kmg.fba@gmail.com", "ahmed@gmail.com"]
+
+function isAdminEmail(email: string | null | undefined): boolean {
+  return email != null && ADMIN_EMAILS.includes(email.toLowerCase())
+}
 
 async function verifyCaller(authHeader: string | null): Promise<{ valid: boolean; email: string | null }> {
   if (!authHeader) return { valid: false, email: null }
@@ -103,7 +107,7 @@ async function deleteUser(email: string): Promise<Response> {
     return json({ ok: false, error: "User not found." }, 404)
   }
 
-  if (target.email?.toLowerCase() === ADMIN_EMAIL) {
+  if (isAdminEmail(target.email)) {
     return json({ ok: false, error: "The admin account cannot be deleted." }, 400)
   }
 
@@ -175,7 +179,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (parsed.action === "delete") {
-      if (caller.email?.toLowerCase() !== ADMIN_EMAIL) {
+      if (!isAdminEmail(caller.email)) {
         return json({ ok: false, error: "Only the admin can delete users." }, 403)
       }
       return await deleteUser(email)
